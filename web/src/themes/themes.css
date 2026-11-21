@@ -1,0 +1,165 @@
+/* Theme tokens. Components only use these variables. */
+
+:root,
+[data-theme='drake'] {
+  color-scheme: dark;
+  --font-screen: 'Share Tech Mono', ui-monospace, monospace;
+  --font-label: 'Chakra Petch', 'Share Tech Mono', system-ui, sans-serif;
+
+  --page: #0b0907;
+  --page-glow: radial-gradient(120% 90% at 50% 0%, #1d1610 0%, #0b0907 60%);
+
+  /* Gunmetal bezels and panels */
+  --metal: #2b2926;
+  --metal-hi: #4a4641;
+  --metal-lo: #161514;
+  --metal-edge: #5c5650;
+  --panel: linear-gradient(180deg, #34312d 0%, #252320 100%);
+  --panel-inset: #121110;
+  --label: #b9b2a8;
+  --label-dim: #7b746b;
+  --hazard-a: #b8b2a8;
+  --hazard-b: #8c3a2a;
+  --rivet: radial-gradient(circle at 35% 35%, #6d675f, #2a2724 70%);
+
+  /* CRT screen */
+  --screen-bg: #1a1209;
+  --screen-bg-2: #120c06;
+  --ink: #e7953c; /* main amber */
+  --ink-hi: #ffc070;
+  --ink-dim: #7a4c1f;
+  --ink-faint: #3a2510;
+  --ink-glow: 0 0 6px rgba(240, 150, 60, 0.55);
+  --scan: rgba(0, 0, 0, 0.22);
+
+  /* Backlit keys */
+  --key-off: #1e1c1a;
+  --key-off-text: #8a5a2c;
+  --key-on: radial-gradient(circle at 50% 45%, #f3a050 0%, #c96a22 55%, #8d4614 100%);
+  --key-on-text: #2a1404;
+  --key-on-glow: 0 0 14px rgba(255, 140, 40, 0.55), inset 0 0 8px rgba(255, 210, 150, 0.5);
+
+  --ok: #9fd16a;
+  --warn: #f2b33d;
+  --danger: #ff5a3c;
+  --info: #6fb6ff;
+
+  --pip: #f5e3b8;
+  --pip-glow: 0 0 8px rgba(255, 230, 170, 0.8);
+
+  --radius: 6px;
+  --bezel-radius: 14px;
+  --ui-bg: #17140f;
+  --ui-bg-2: #211c15;
+  --ui-line: #3b3329;
+  --ui-text: #e9dfd0;
+  --ui-text-dim: #a2968a;
+}
+
+/* ---------- Placeholder themes: first-pass palettes only ---------- */
+
+[data-theme='crusader'] {
+  --font-screen: 'Rajdhani', system-ui, sans-serif;
+  --font-label: 'Rajdhani', system-ui, sans-serif;
+  --page: #070b12;
+  --page-glow: radial-gradient(120% 90% at 50% 0%, #102035 0%, #070b12 60%);
+  --metal: #d8dde4;
+  --metal-hi: #f4f6f9;
+  --metal-lo: #9aa3ae;
+  --metal-edge: #ffffff;
+  --panel: linear-gradient(180deg, #e9edf2 0%, #c9d0d8 100%);
+  --panel-inset: #0d1520;
+  --label: #23344a;
+  --label-dim: #5a6b80;
+  --hazard-a: #1e3d66;
+  --hazard-b: #c9d0d8;
+  --screen-bg: #06111f;
+  --screen-bg-2: #030a14;
+  --ink: #6fc3ff;
+  --ink-hi: #c8ecff;
+  --ink-dim: #23577f;
+  --ink-faint: #0f2a42;
+  --ink-glow: 0 0 6px rgba(110, 195, 255, 0.5);
+  --key-off: #0f1a28;
+  --key-off-text: #3f6e98;
+  --key-on: radial-gradient(circle at 50% 45%, #bfe6ff 0%, #5eb2f0 60%, #2a6fa8 100%);
+  --key-on-text: #04182b;
+  --key-on-glow: 0 0 14px rgba(110, 195, 255, 0.55), inset 0 0 8px rgba(220, 245, 255, 0.6);
+  --pip: #d9f1ff;
+  --pip-glow: 0 0 8px rgba(160, 220, 255, 0.8);
+  --ui-bg: #0b1420;
+  --ui-bg-2: #13202f;
+  --ui-line: #24364a;
+  --ui-text: #e2edf7;
+  --ui-text-dim: #8ea3b8;
+}
+
+[data-theme='rsi'] {
+  --font-screen: 'Rajdhani', system-ui, sans-serif;
+  --font-label: 'Rajdhani', system-ui, sans-serif;
+  --page: #05070a;
+  --page-glow: radial-gradient(120% 90% at 50% 0%, #0f1922 0%, #05070a 60%);
+  --metal: #22262b;
+  --metal-hi: #3a4048;
+  --metal-lo: #121417;
+  --metal-edge: #4b525b;
+  --panel: linear-gradient(180deg, #2a2f35 0%, #1b1f23 100%);
+  --label: #b8c4cf;
+  --label-dim: #6f7c88;
+  --hazard-a: #c7d2dc;
+  --hazard-b: #2c3640;
+  --screen-bg: #04121a;
+  --screen-bg-2: #020a0f;
+  --ink: #5fe0e6;
+  --ink-hi: #c9fbff;
+  --ink-dim: #1e6a70;
+  --ink-faint: #0b3236;
+  --ink-glow: 0 0 6px rgba(95, 224, 230, 0.5);
+  --key-off: #12181d;
+  --key-off-text: #3a6d73;
+  --key-on: radial-gradient(circle at 50% 45%, #c9fbff 0%, #5fe0e6 55%, #23878d 100%);
+  --key-on-text: #022326;
+  --key-on-glow: 0 0 14px rgba(95, 224, 230, 0.55), inset 0 0 8px rgba(220, 255, 255, 0.6);
+  --pip: #d6ffff;
+  --pip-glow: 0 0 8px rgba(160, 250, 255, 0.8);
+  --ui-bg: #0a1015;
+  --ui-bg-2: #111a21;
+  --ui-line: #22303b;
+  --ui-text: #e0eef3;
+  --ui-text-dim: #87a0ab;
+}
+
+[data-theme='argo'] {
+  --font-screen: 'Saira Condensed', system-ui, sans-serif;
+  --font-label: 'Saira Condensed', system-ui, sans-serif;
+  --page: #0a0a08;
+  --page-glow: radial-gradient(120% 90% at 50% 0%, #1f1e12 0%, #0a0a08 60%);
+  --metal: #e0b318;
+  --metal-hi: #f6d24a;
+  --metal-lo: #8f700c;
+  --metal-edge: #fff0a0;
+  --panel: linear-gradient(180deg, #2a2a26 0%, #1c1c19 100%);
+  --label: #f2cf3a;
+  --label-dim: #9b8a3a;
+  --hazard-a: #f2cf3a;
+  --hazard-b: #151513;
+  --screen-bg: #0f120c;
+  --screen-bg-2: #080a06;
+  --ink: #d7f06a;
+  --ink-hi: #f4ffc2;
+  --ink-dim: #5f7020;
+  --ink-faint: #2a3310;
+  --ink-glow: 0 0 6px rgba(215, 240, 106, 0.45);
+  --key-off: #1a1a16;
+  --key-off-text: #8b8a3a;
+  --key-on: radial-gradient(circle at 50% 45%, #fff4a8 0%, #f2cf3a 55%, #a88a10 100%);
+  --key-on-text: #221c00;
+  --key-on-glow: 0 0 14px rgba(242, 207, 58, 0.55), inset 0 0 8px rgba(255, 250, 200, 0.6);
+  --pip: #fff6c4;
+  --pip-glow: 0 0 8px rgba(255, 240, 160, 0.8);
+  --ui-bg: #12120f;
+  --ui-bg-2: #1b1b16;
+  --ui-line: #34332a;
+  --ui-text: #f1eedd;
+  --ui-text-dim: #a8a48c;
+}
