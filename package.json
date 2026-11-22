@@ -11,7 +11,11 @@
     "build": "vite build",
     "sim": "node --disable-warning=ExperimentalWarning server/index.js --source=sim",
     "fake-game": "node scripts/fake-game.js",
-    "test": "node --disable-warning=ExperimentalWarning --test --test-timeout=20000 test/*.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test --test-timeout=20000 test/*.test.js",
+    "prebuild": "node scripts/check-node.cjs",
+    "prestart": "node scripts/check-node.cjs",
+    "presim": "node scripts/check-node.cjs",
+    "predev": "node scripts/check-node.cjs"
   },
   "repository": {
     "type": "git",
