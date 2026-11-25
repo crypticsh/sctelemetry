@@ -31,7 +31,9 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
    server.game.telemetry.trigger.actions.enabled = 1
    ```
    (The last line is only needed for actions.) Then run `setx GRPC_CLIENT_SERVER_ENABLED true` once, quit the RSI Launcher fully, and start the game again.
-3. In this folder, install, build and start:
+3. **Double-click `Start SC Telemetry.cmd`** (or `Start Simulator.cmd` for demo data without the game). On the first run, and after a `git pull`, it installs packages and builds the screens. Then it starts the server and opens the cockpit in your browser. Close the window to stop it. On macOS or Linux, run `./start.sh` (add `--sim` for demo data).
+
+   Or do the same steps by hand:
    ```bash
    npm install
    ```
@@ -44,7 +46,7 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
    The console prints addresses such as `http://192.168.1.20:8420`. Open that address on your tablet or phone. When Windows asks, allow Node through the firewall on **private** networks.
 4. If the game is not installed in the default location, set the path to `StarCitizen.exe` in **Settings → Telemetry source**. The server reads the API definitions from the exe and caches them, so it keeps working after patches.
 
-**No game running?** Run `npm run sim` to use built-in demo data, or pick *Simulator* in Settings.
+**No game running?** Double-click `Start Simulator.cmd`, run `npm run sim`, to use built-in demo data, or pick *Simulator* in Settings.
 
 **Tips for tablets:** use *Add to Home Screen* to run it full screen. Screen wake-lock only works over HTTPS or on localhost; on plain HTTP, set the tablet's auto-lock to "never" while flying.
 

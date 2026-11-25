@@ -15,7 +15,9 @@
     "prebuild": "node scripts/check-node.cjs",
     "prestart": "node scripts/check-node.cjs",
     "presim": "node scripts/check-node.cjs",
-    "predev": "node scripts/check-node.cjs"
+    "predev": "node scripts/check-node.cjs",
+    "launch": "node scripts/launch.cjs",
+    "launch:sim": "node scripts/launch.cjs --sim"
   },
   "repository": {
     "type": "git",
