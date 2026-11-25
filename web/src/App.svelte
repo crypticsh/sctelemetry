@@ -3,6 +3,7 @@
   import Logs from './components/Logs.svelte';
   import Settings from './components/Settings.svelte';
   import GaugePanel from './components/gauges/GaugePanel.svelte';
+  import Sessions from './components/Sessions.svelte';
   import { alerts } from './lib/alerts.svelte.js';
   import Badge from './themes/Badge.svelte';
   import { tele } from './lib/telemetry.svelte.js';
@@ -58,6 +59,7 @@
     if (document.fullscreenElement) document.exitFullscreen?.();
     else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   }
+  const where = $derived(tele.loc?.line || (tele.loc?.gameRunning ? tele.loc?.event?.text || tele.loc?.placeName : null) || null);
   const shipName = $derived(ship?.present ? (ship.className || '').replace(/^[A-Z]+_/, '').replace(/_/g, ' ') : '');
 </script>
 
@@ -71,6 +73,9 @@
     <i></i>{linkText}{#if st.connected}<small>{Math.round(st.fps)}Hz</small>{/if}
   </span>
 
+  {#if where}
+    <button class="where" onclick={() => go('sessions')} title={tele.loc?.path?.join(' › ') || ''}>{where}</button>
+  {/if}
   {#if alerts.top}
     <span class="alert" class:warn={alerts.warning}>{alerts.top}</span>
   {/if}
@@ -88,6 +93,9 @@
     </button>
     <button class="nb" class:on={route === 'gauges'} onclick={() => go('gauges')} aria-label="Gauges" title="Gauges">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" /><path d="M12 13l4-4M7 16h0M17 16h0M12 7v1" /></svg>
+    </button>
+    <button class="nb" class:on={route === 'sessions'} onclick={() => go('sessions')} aria-label="Sessions and location" title="Sessions and location">
+      <svg viewBox="0 0 24 24"><path d="M12 21s-6-5.4-6-10a6 6 0 0 1 12 0c0 4.6-6 10-6 10z" /><circle cx="12" cy="11" r="2.2" /></svg>
     </button>
     <button class="nb" class:on={route === 'logs'} onclick={() => go('logs')} aria-label="Flight log" title="Flight log">
       <svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 6M3 21h18" /></svg>
@@ -107,6 +115,8 @@
   <Settings />
 {:else if route === 'gauges'}
   <GaugePanel bind:editing />
+{:else if route === 'sessions'}
+  <Sessions />
 {:else}
   <Cockpit bind:editing />
 {/if}
@@ -185,6 +195,24 @@
   }
   .spacer {
     flex: 1;
+  }
+  .where {
+    min-width: 0;
+    max-width: 34vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font: 500 13px var(--font-label);
+    color: var(--ui-text-dim);
+  }
+  @media (max-width: 700px) {
+    .where {
+      display: none;
+    }
   }
   .alert {
     font: 600 13px 'Barlow Condensed', var(--font-label);

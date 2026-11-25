@@ -4,6 +4,8 @@ Cockpit-style telemetry screens for Star Citizen that run on your phones and tab
 
 - **Live MFD screens**: Power Management and Shields (round 1). Swipe between them or tap the tabs.
 - **Configurable side panels**: status lights (CPLD, ESP, GSAF…), toggle switches, buttons, gauges and counters. You can move, rename, rebind and add them, and change what they do.
+- **Gauges page**: aircraft-style instruments (airspeed, attitude, altimeter, radar altimeter, two vertical speed gauges, turn coordinator, heading, time to impact, G-meter, hull/shield, fuel, boost charge, and more). You can drag them into any order, resize and tune them, add or remove them. Calculated alerts (pull up, sink rate, gear, overspeed, G limit, fuel…) light an alert panel and can play tones and spoken callouts.
+- **Where you are and play history** (from `Game.log`): your shard, the place (city or station, else planet or moon, else jurisdiction, else system), armistice, jurisdiction, quantum travel and a one-line summary such as "Flying at Cellin, 940 m above the ground". The Sessions page logs how long you play, each shard you join and leave, and where you spent your time.
 - **Flight data recorder**: samples and state changes go into SQLite. You can view them as charts and an event log, and export them as CSV.
 - **Themes**: Drake is complete. Crusader, RSI and ARGO have first-pass palettes.
 - **Optional in-game actions**: switches and buttons can send actions like gear, decouple and power. These are off by default.
@@ -30,7 +32,9 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
    server.game.telemetry.enabled = 1
    server.game.telemetry.trigger.actions.enabled = 1
    ```
-   (The last line is only needed for actions.) Then run `setx GRPC_CLIENT_SERVER_ENABLED true` once, quit the RSI Launcher fully, and start the game again.
+   (The last line is only needed for actions.) **Settings → Game setup check** shows what's missing and can add these lines for you. Then run `setx GRPC_CLIENT_SERVER_ENABLED true` once, quit the RSI Launcher fully, and start the game again.
+
+   Current LIVE builds ignore `grpc.client.server.port` and always listen on **2942**. The app tries the user.cfg port first, then 2942, and stays on whichever streams.
 3. **Double-click `Start SC Telemetry.cmd`** (or `Start Simulator.cmd` for demo data without the game). On the first run, and after a `git pull`, it installs packages and builds the screens. Then it starts the server and opens the cockpit in your browser. Close the window to stop it. On macOS or Linux, run `./start.sh` (add `--sim` for demo data).
 
    Or do the same steps by hand:
@@ -44,7 +48,7 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
    npm start
    ```
    The console prints addresses such as `http://192.168.1.20:8420`. Open that address on your tablet or phone. When Windows asks, allow Node through the firewall on **private** networks.
-4. If the game is not installed in the default location, set the path to `StarCitizen.exe` in **Settings → Telemetry source**. The server reads the API definitions from the exe and caches them, so it keeps working after patches.
+4. The server looks for `StarCitizen.exe` in the usual folders on every drive (for example `H:\StarCitizen\StarCitizen\LIVE`). If it can't find it, set the path in **Settings → Telemetry source**. `Game.log` and `user.cfg` are found next to it. The server reads the API definitions from the exe and caches them, so it keeps working after patches.
 
 **No game running?** Double-click `Start Simulator.cmd` (or run `npm run sim`) to use built-in demo data, or pick *Simulator* in Settings.
 
@@ -56,6 +60,8 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
 |---|---|
 | Cockpit | Swipe the screen or tap the MFD tabs. Tap a light or switch to send its action (if actions are on). |
 | ✎ (pencil) | Edit the layout. Drag ⠿ to move widgets or panels, tap a widget to configure it, use ⚙ for panel settings, and **Screens** to set the order and tabs. *Save & close* stores the layout for every device. |
+| Gauges | The instrument panel. Use the pencil to add, drag, resize, tune or remove gauges. **Alert settings** sets the thresholds and turns sound on for this device. |
+| Sessions (map pin) | Where you are now, time on the current shard, play time per day, game runs with their shard sessions, where you spent time, and the location event log. **Import old logs** reads the finished logs the game keeps in `logbackups`. |
 | Flight log | Charts for any logged channel (5 min to 7 days, or step back in time), an event log of state changes, warnings and game events, and CSV export. |
 | Settings | Theme, per-device layout profile, logging (interval, retention, size cap…), update rate, actions, and a **live data inspector** that shows every field the game sends. Tap a field to copy its path for a widget. |
 
@@ -76,6 +82,12 @@ Layouts are stored on the server. Make one per device in Settings (*Duplicate*, 
 | ATMO light | shown hatched (unknown) unless the game reports an atmospheric-flight setting |
 
 The game's exact field types are not documented. `server/telemetry/normalize.js` reads every field defensively: a value can be a number, `{current, max}`, a bool and so on. Anything else can be reached from a widget as `raw.<path>`.
+
+### Game.log, places and privacy
+
+The server only reads `Game.log` (never writes it). It works out the shard, place, quantum trip, jurisdiction and armistice from the log, and stores only those facts and short event lines such as "Landed at Ruin Station", never the log lines. Re-reading a log replaces that game run's rows, so nothing is counted twice.
+
+Places come from a built-in list: Stanton with its moons, cities, orbital stations and Lagrange rest stops, plus the main Pyro and Nyx places, and jump gateways worked out from their names. For a fuller list, put a `places.json` in 7Hills Link's format into `data/` (or set its path in Settings → Game.log). The simulator writes a matching fake `Game.log` into `data/sim/`, so locations and history can be tried without the game.
 
 ## Development
 

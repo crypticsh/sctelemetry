@@ -21,7 +21,7 @@ test('streams, normalizes and triggers actions over gRPC', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sct-'));
   const exePath = path.join(dir, 'StarCitizen.exe');
   fs.writeFileSync(exePath, exe);
-  const src = new GrpcSource({ host: '127.0.0.1', port, exePath, dataDir: dir });
+  const src = new GrpcSource({ host: '127.0.0.1', ports: [50099, port], exePath, dataDir: dir });
   const frame = await new Promise((resolve, reject) => {
     src.once('frame', resolve);
     src.on('status', () => src.error && reject(new Error(src.error)));

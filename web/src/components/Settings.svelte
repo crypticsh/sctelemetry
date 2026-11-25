@@ -14,7 +14,25 @@
   let stats = $state(null);
   let showInspector = $state(false);
 
+  let setup = $state(null);
+  let confirmCfg = $state(false);
+  async function loadSetup() {
+    try { setup = await api('/api/setup'); } catch { setup = null; }
+  }
+  async function writeCfg() {
+    if (!confirmCfg) { confirmCfg = true; setTimeout(() => (confirmCfg = false), 4000); return; }
+    confirmCfg = false;
+    try {
+      const r = await api('/api/setup/usercfg', { method: 'POST' });
+      setup = r.status;
+      toast(r.changed.length ? `Added to user.cfg: ${r.changed.join(', ')}. Restart the game.` : 'user.cfg already has everything');
+    } catch (e) {
+      toast(e.message, 'warn');
+    }
+  }
+
   async function load() {
+    loadSetup();
     const r = await api('/api/settings');
     s = r.settings;
     saved = JSON.stringify(r.settings);
@@ -29,6 +47,7 @@
       s = r.settings;
       saved = JSON.stringify(r.settings);
       toast('Settings saved');
+      loadSetup();
     } catch (e) {
       toast(`Save failed: ${e.message}`, 'warn');
     }
@@ -188,9 +207,56 @@
             .protoset file instead (optional)
             <input class="ui-input mono" bind:value={s.telemetry.protosetPath} placeholder="leave empty to read the exe" />
           </label>
+          <label class="ui-check"><input type="checkbox" bind:checked={s.telemetry.readUserCfgPort} /> Use the port from the game's user.cfg</label>
+          <label class="ui-check"><input type="checkbox" bind:checked={s.telemetry.tryLivePort} /> Also try port 2942<small>Current LIVE builds ignore the user.cfg port and always serve on 2942. The app tries each port until one streams.</small></label>
           <label class="ui-field">
             Show NO SIGNAL after (ms without data)
             <input class="ui-input" type="number" min="250" step="250" bind:value={s.telemetry.staleAfterMs} />
+          </label>
+        </div>
+      </section>
+
+      <section class="ui-card">
+        <h2>Game setup check</h2>
+        {#if setup}
+          <ul class="checks">
+            <li class:ok={setup.exeFound}>{setup.exeFound ? '✓' : '✗'} StarCitizen.exe {setup.exeFound ? 'found' : 'not found at the path above'}{setup.channel ? ` (${setup.channel})` : ''}</li>
+            <li class:ok={setup.userCfgFound && !Object.keys(setup.missing).length}>
+              {setup.userCfgFound && !Object.keys(setup.missing).length ? '✓' : '✗'} user.cfg
+              {#if Object.keys(setup.missing).length}
+                is missing: <code>{Object.entries(setup.missing).map(([k, v]) => `${k} = ${v}`).join(', ')}</code>
+              {:else}
+                has the telemetry lines
+              {/if}
+            </li>
+            <li class:ok={setup.gameLogFound}>{setup.gameLogFound ? '✓' : '✗'} Game.log {setup.gameLogFound ? 'found' : 'not found yet (it appears after the first game start)'}</li>
+            <li class="ok">Ports tried: {setup.ports.join(', ')}</li>
+            {#if setup.envVar != null}
+              <li class:ok={setup.envVar === 'true'}>{setup.envVar === 'true' ? '✓' : '✗'} GRPC_CLIENT_SERVER_ENABLED {setup.envVar === 'true' ? 'is set' : 'is not set for this server process'}</li>
+            {/if}
+          </ul>
+          {#if setup.userCfgFound !== undefined && Object.keys(setup.missing).length && setup.exeFound}
+            <button class="ui-btn small" class:danger={confirmCfg} onclick={writeCfg}>{confirmCfg ? 'Tap again to edit user.cfg' : 'Add the missing lines to user.cfg'}</button>
+          {/if}
+          <p class="hint">Also run <code>setx GRPC_CLIENT_SERVER_ENABLED true</code> once in a Windows terminal, then quit the RSI Launcher fully and start the game again. The game reads both at start.</p>
+        {:else}
+          <p class="hint">Checking…</p>
+        {/if}
+      </section>
+
+      <section class="ui-card">
+        <h2>Game.log</h2>
+        <div class="grid2">
+          <label class="ui-check full"><input type="checkbox" bind:checked={s.gamelog.enabled} /> Read Game.log for location and play history<small>Read only, never written. Gives your shard, the place you're at, quantum travel, jurisdiction and armistice, and logs how long you play. Only derived facts are stored, never log lines.</small></label>
+          <label class="ui-field full">
+            Game.log path (empty = next to the exe: {setup?.gameLog || 'StarCitizen\\LIVE\\Game.log'})
+            <input class="ui-input mono" bind:value={s.gamelog.path} placeholder="automatic" />
+          </label>
+          <label class="ui-check"><input type="checkbox" bind:checked={s.gamelog.importBackups} /> Import older logs from logbackups at start<small>The game keeps previous sessions' logs there, so history goes back further.</small></label>
+          <label class="ui-field">
+            Place list (empty = data/places.json, else built-in)
+            <input class="ui-input mono" bind:value={s.gamelog.placesPath} placeholder="automatic" />
+            <span class="hint">Accepts 7Hills Link's places.json for its fuller list.</span>
           </label>
         </div>
       </section>
@@ -376,6 +442,18 @@
   }
   code {
     font-size: 11px;
+  }
+  .checks {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+    font-size: 14px;
+    color: var(--danger);
+  }
+  .checks li.ok {
+    color: var(--ui-text);
   }
   input[type='range'] {
     accent-color: var(--ink);

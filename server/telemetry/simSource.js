@@ -3,6 +3,8 @@
 // tried without the game running. Run with `npm run sim` or pick
 // "Simulator" in Settings.
 
+import fs from 'node:fs';
+import path from 'node:path';
 import { EventEmitter } from 'node:events';
 
 const FACES = 4; // front, right, back, left (guess; the game may report more)
@@ -34,6 +36,10 @@ export function createSimState() {
     alt: 0,
     vsi: 0,
     lastStep: Date.now(),
+    cycle: 0,
+    shardN: 1,
+    logOut: [],
+    logSched: [],
     power: { power_plants: true, engines: true, weapons: true, coolers: true, life_support: true, sensors: true, gravity_generators: true, shield_generators: true, shield_emitters: true },
     phase: 'landed',
     phaseUntil: 6000,
@@ -51,13 +57,14 @@ export function stepSim(s, now = Date.now()) {
     const next = { landed: 'liftoff', liftoff: 'cruise', cruise: 'combat', combat: 'return', return: 'landed' }[s.phase];
     s.phase = next;
     s.phaseUntil = el + { landed: 8000, liftoff: 6000, cruise: 20000, combat: 25000, return: 90000 }[next];
-    if (next === 'liftoff') { s.landed = false; ev.push('TAKEOFF'); }
-    if (next === 'cruise') { s.gear = false; s.mode = 'NAV'; s.lights = false; }
-    if (next === 'combat') { s.mode = 'SCM'; s.decoupled = Math.random() < 0.5; }
+    if (next === 'liftoff') { s.landed = false; ev.push('TAKEOFF'); simLog(s, now, 'liftoff'); }
+    if (next === 'cruise') { s.gear = false; s.mode = 'NAV'; s.lights = false; simLog(s, now, 'cruise'); }
+    if (next === 'combat') { s.mode = 'SCM'; s.decoupled = Math.random() < 0.5; simLog(s, now, 'arrive'); }
     if (next === 'return') { s.decoupled = false; s.mode = 'SCM'; s.alt = 420; s.vsi = -14; s.hot = !s.hot; s.recovered = false; }
     if (next === 'liftoff') { s.alt = 0; }
     if (next === 'landed') { s.landed = true; s.speed = 0; s.alt = 0; s.vsi = 0; ev.push('LANDED'); s.noise = 8; s.decoy = 8; }
   }
+  while (s.logSched.length && s.logSched[0][0] <= now) { const [t, l] = s.logSched.shift(); s.logOut.push(stamp(t) + l); }
   const dt = Math.min(0.5, (now - s.lastStep) / 1000);
   s.lastStep = now;
   // Vertical profile: climb out, then a real descent to touchdown on return.
@@ -69,7 +76,7 @@ export function stepSim(s, now = Date.now()) {
     s.vsi += (want - s.vsi) * 0.05;
     s.alt = Math.max(0, s.alt + s.vsi * dt);
     if (s.alt < 180 && !s.gear) { s.gear = true; s.lights = true; }
-    if (s.alt <= 0 && !s.landed) { s.landed = true; s.vsi = 0; s.phaseUntil = el + 1000; }
+    if (s.alt <= 0 && !s.landed) { s.landed = true; s.vsi = 0; s.phaseUntil = el + 1000; simLog(s, now, 'land'); }
   }
   if (s.phase !== 'liftoff' && s.phase !== 'return') s.vsi = 0;
   // Boost: bursts in combat drain it, then it recharges after a short delay.
@@ -170,9 +177,64 @@ export function stepSim(s, now = Date.now()) {
   };
 }
 
+// ---- a matching fake Game.log, so locations and play history work in the simulator
+const stamp = (t) => `<${new Date(t).toISOString()}> `;
+const N = (text) => `[Notice] <SHUDEvent_OnNotification> Added notification "${text}: " [1] to queue. [Team_CoreGameplayFeatures]`;
+const INV = (a, b) => `[Notice] <Update Inventory Location> Player [SimPilot] is changing location. Landing [${a}] -> [${b}]. Location [${a || 7}] -> [${b || 7}]. Pending [0] [Inventory]`;
+const LOC = (name) => `[Notice] <RequestLocationInventory> Player[SimPilot] requested inventory for Location[${name}] [Inventory]`;
+const QT = (target) => `[Notice] <Player Selected Quantum Target - Local> [ItemNavigation] | Player has selected point ${target} as their destination, routing locally [QuantumTravel]`;
+const ROUTE = (from, target) => `[Notice] <Calculate Route> [ItemNavigation] | Projected Start Location is ${from} for route to destination ${target} [QuantumTravel]`;
+const JOIN = (n) => `[Notice] <Join PU> address[0.0.0.0] port[0] shard[pub_sim_${String(n).padStart(3, '0')}] locationId[1] [Matchmaking]`;
+
+export function simLogHeader(now) {
+  return [
+    'Log started on ' + new Date(now).toUTCString(),
+    'FileVersion: 4.10.201.48085',
+    'Branch: sc-alpha-4.10.0',
+    '[CIG] build_version[13220821]',
+    'Executable: C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Bin64\\StarCitizen.exe',
+    '[Notice] <Legacy login response> [CIG-net] User Login Success - Handle[SimPilot] - Time[1] [Login]',
+    JOIN(1),
+    INV(0, 111),
+    LOC('RR_CRU_LEO'),
+    N('Entering Armistice Zone - Combat Prohibited'),
+  ].map((l) => stamp(now) + l);
+}
+
+function simLog(s, now, what) {
+  const at = (ms, line) => s.logSched.push([now + ms, line]);
+  const toMoon = s.cycle % 2 === 0;
+  if (what === 'liftoff') {
+    if (s.cycle > 0 && s.cycle % 3 === 0) { // switch shards now and then
+      s.logOut.push(stamp(now) + 'Requesting game mode Frontend_Main/SC_Frontend');
+      s.shardN++;
+      s.logOut.push(stamp(now + 1) + JOIN(s.shardN));
+    }
+    if (toMoon) s.logOut.push(stamp(now) + N('Leaving Armistice Zone - Caution Advised'));
+    s.logOut.push(stamp(now) + INV(toMoon ? 111 : 222, 0));
+  } else if (what === 'cruise') {
+    const target = toMoon ? 'OOC_Stanton_2b_Daymar' : 'RR_CRU_LEO';
+    s.logOut.push(stamp(now) + QT(target), stamp(now) + ROUTE(toMoon ? 'Seraphim Station' : 'Daymar', target));
+    at(1500, N('Quantum Travel Calibration Started By SimPilot'));
+    at(6000, N('Quantum Travel Calibration Complete By SimPilot'));
+  } else if (what === 'arrive') {
+    s.logOut.push(stamp(now) + '[Notice] <Quantum Drive Arrived - Arrived at Final Destination> | Quantum Drive has arrived at final destination [QuantumTravel]');
+    if (toMoon) {
+      s.logOut.push(stamp(now + 100) + "[Notice] <Planet CPU Maps Loaded> Planet 'OOC_Stanton_2b_Daymar' (entity 1) CPU maps: x [Planet]");
+      at(2000, N('Entered Crusader Industries Jurisdiction'));
+    } else at(2000, N('Entered UEE Jurisdiction'));
+  } else if (what === 'land') {
+    s.logOut.push(stamp(now) + INV(0, toMoon ? 222 : 111));
+    s.logOut.push(stamp(now) + LOC(toMoon ? 'Outpost_PAF_Stanton2b_Attritus_2' : 'RR_CRU_LEO'));
+    if (!toMoon) s.logOut.push(stamp(now) + N('Entering Armistice Zone - Combat Prohibited'));
+    s.cycle++;
+  }
+}
+
 export class SimSource extends EventEmitter {
-  constructor() {
+  constructor({ logFile } = {}) {
     super();
+    this.logFile = logFile;
     this.kind = 'sim';
     this.connected = false;
     this.error = null;
@@ -183,7 +245,15 @@ export class SimSource extends EventEmitter {
   start() {
     this.connected = true;
     this.emit('status');
-    this._iv = setInterval(() => this.emit('frame', stepSim(this.state)), 1000 / 17);
+    if (this.logFile) {
+      try { fs.mkdirSync(path.dirname(this.logFile), { recursive: true }); fs.writeFileSync(this.logFile, simLogHeader(Date.now()).join('\r\n') + '\r\n'); } catch (e) { console.error('sim log:', e.message); }
+    }
+    this._iv = setInterval(() => {
+      this.emit('frame', stepSim(this.state));
+      if (this.logFile && this.state.logOut.length) {
+        try { fs.appendFileSync(this.logFile, this.state.logOut.splice(0).join('\r\n') + '\r\n'); } catch { /* ignore */ }
+      }
+    }, 1000 / 17);
   }
 
   stop() {

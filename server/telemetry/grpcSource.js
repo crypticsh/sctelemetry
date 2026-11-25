@@ -10,9 +10,12 @@ const grpc = require('@grpc/grpc-js');
 const TO_OBJECT = { longs: Number, enums: String, defaults: true, arrays: true, objects: false, oneofs: false };
 
 export class GrpcSource extends EventEmitter {
-  constructor({ host, port, exePath, protosetPath, dataDir }) {
+  constructor({ host, ports, exePath, protosetPath, dataDir }) {
     super();
-    Object.assign(this, { host, port, exePath, protosetPath, dataDir });
+    // Ports to try in turn until one streams (the user.cfg port, then 2942).
+    this.ports = ports?.length ? ports : [50051];
+    this.port = this.ports[0];
+    Object.assign(this, { host, exePath, protosetPath, dataDir });
     this.kind = 'game';
     this.connected = false;
     this.error = null;
@@ -55,6 +58,7 @@ export class GrpcSource extends EventEmitter {
     this._client?.close();
     this._client = new grpc.Client(`${this.host}:${this.port}`, grpc.credentials.createInsecure());
     const { stream } = svc;
+    let got = false;
     const call = this._client.makeServerStreamRequest(
       stream.path,
       (o) => Buffer.from(stream.req.encode(stream.req.fromObject(o)).finish()),
@@ -63,13 +67,22 @@ export class GrpcSource extends EventEmitter {
     );
     this._call = call;
     call.on('data', (frame) => {
+      got = true;
       if (!this.connected) { this.connected = true; this.error = null; this.emit('status'); }
       this.emit('frame', frame);
     });
     const done = (msg) => {
       if (this._call !== call) return;
       this._call = null;
-      this._fail(msg, 3000);
+      if (!got && this.ports.length > 1) {
+        // Nothing on this port: try the next one at once; wait only after a full round.
+        const i = (this.ports.indexOf(this.port) + 1) % this.ports.length;
+        this.port = this.ports[i];
+        this._client?.close();
+        this._client = null;
+        if (i !== 0) { clearTimeout(this._timer); this._timer = setTimeout(() => this._connect(), 50); return; }
+      }
+      this._fail(`${msg} (port${this.ports.length > 1 ? 's ' + this.ports.join(', ') : ' ' + this.port})`, 3000);
     };
     call.on('error', (e) => done(e.details || e.message));
     call.on('end', () => done('stream ended'));

@@ -11,6 +11,14 @@ export const DEFAULT_SETTINGS = {
     exePath: 'C:\\Program Files\\Roberts Space Industries\\StarCitizen\\LIVE\\Bin64\\StarCitizen.exe',
     protosetPath: '', // optional: use a .protoset file instead of reading the exe
     staleAfterMs: 2000, // show NO SIGNAL when no frame for this long
+    readUserCfgPort: true, // use grpc.client.server.port from the channel's user.cfg
+    tryLivePort: true, // also try 2942: 4.x LIVE ignores the user.cfg port and always serves there
+  },
+  gamelog: {
+    enabled: true, // follow Game.log for shard, place, quantum travel and play history
+    path: '', // empty = Game.log next to the exe's channel folder
+    importBackups: true, // also read the finished logs in <channel>/logbackups
+    placesPath: '', // empty = data/places.json if present, else the built-in list
   },
   broadcast: {
     hz: 20, // max updates per second sent to each screen

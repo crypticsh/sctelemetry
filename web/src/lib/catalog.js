@@ -68,6 +68,18 @@ export const BINDINGS = [
     ['player.locomotion', 'Movement state', 'text'],
     ['player.role', 'Crew role', 'text'],
   ] },
+  { group: 'Location (Game.log)', items: [
+    ['loc.line', 'Where + what ("Flying at Cellin, 940 m…")', 'text'],
+    ['loc.placeName', 'Place name', 'text'],
+    ['loc.situation', 'Situation (landed, flying…)', 'text'],
+    ['loc.event.text', 'Latest event ("Landed at Ruin Station")', 'text'],
+    ['loc.jurisdiction', 'Jurisdiction', 'text'],
+    ['loc.armistice', 'In armistice zone', 'bool'],
+    ['loc.shard', 'Shard id', 'text'],
+    ['loc.transit.state', 'Quantum state (spool / travel)', 'text'],
+    ['loc.transit.toName', 'Quantum destination', 'text'],
+    ['loc.gameRunning', 'Game running', 'bool'],
+  ] },
   { group: 'Link', items: [
     ['link.connected', 'Telemetry connected', 'bool'],
   ] },

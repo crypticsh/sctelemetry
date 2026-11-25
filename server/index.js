@@ -12,6 +12,11 @@ import { Recorder } from './recorder.js';
 import { GrpcSource } from './telemetry/grpcSource.js';
 import { normalize } from './telemetry/normalize.js';
 import { SimSource } from './telemetry/simSource.js';
+import { gameFiles, portsFor, setupStatus, applyCfg, missing as cfgMissing, detectExe } from './gamefiles.js';
+import { Places } from './gamelog/places.js';
+import { Sessions } from './gamelog/sessions.js';
+import { GameLogFollower } from './gamelog/follower.js';
+import { stateOf, Steady, describe } from './gamelog/situation.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -24,8 +29,18 @@ const layouts = { file: path.join(DATA, 'layouts.json'), value: null };
 try { layouts.value = JSON.parse(fs.readFileSync(layouts.file, 'utf8')); } catch { /* client default */ }
 const S = () => settings.value;
 
+// The game isn't where the settings say: look for it on the usual drives and folders.
+if (!fs.existsSync(S().telemetry.exePath)) {
+  const found = detectExe();
+  if (found) {
+    console.log(`  found the game at ${found}`);
+    settings.update({ telemetry: { exePath: found } });
+  }
+}
+
 const recorder = new Recorder(path.join(DATA, 'telemetry.db'), S);
 recorder.prune();
+const sessions = new Sessions(recorder.db);
 
 // ---------------------------------------------------------------- source
 let source = null;
@@ -38,8 +53,8 @@ function startSource() {
   const t = S().telemetry;
   const kind = args.source || t.source;
   source = kind === 'sim'
-    ? new SimSource()
-    : new GrpcSource({ host: t.host, port: t.port, exePath: t.exePath, protosetPath: t.protosetPath, dataDir: DATA });
+    ? new SimSource({ logFile: SIM_LOG })
+    : new GrpcSource({ host: t.host, ports: portsFor(S()), exePath: t.exePath, protosetPath: t.protosetPath, dataDir: DATA });
   source.on('frame', onFrame);
   source.on('status', () => {
     recorder.mark('link', source.connected ? 'up' : 'lost');
@@ -47,12 +62,76 @@ function startSource() {
   });
   source.start();
   broadcastStatus();
+  startGameLog();
+}
+
+// ---------------------------------------------------------------- Game.log
+const SIM_LOG = path.join(DATA, 'sim', 'Game.log');
+let follower = null;
+let places = null;
+const steady = new Steady();
+let situation = null;
+let locJson = '';
+
+function gameLogPath() {
+  const kind = args.source || S().telemetry.source;
+  if (kind === 'sim' && !S().gamelog.path) return SIM_LOG;
+  return gameFiles(S()).gameLog;
+}
+
+function startGameLog() {
+  const file = S().gamelog.enabled ? gameLogPath() : null;
+  if (follower && follower.file === file) return;
+  follower?.stop();
+  follower = null;
+  places = Places.load(S().gamelog.placesPath || path.join(DATA, 'places.json'));
+  if (!file) { pushLocation(true); return; }
+  follower = new GameLogFollower({ file, places, sessions });
+  follower.isRunning = () => location().gameRunning;
+  follower.on('change', () => pushLocation());
+  follower.start();
+  if (S().gamelog.importBackups && file !== SIM_LOG) setTimeout(() => { try { follower?.importBackups(); } catch (e) { console.error(e); } }, 2000);
+}
+
+function location() {
+  const snap = follower?.tracker?.snapshot() || null;
+  const ship = latest?.n?.ship;
+  const live = !!source?.connected && latest && Date.now() - latest.at < S().telemetry.staleAfterMs;
+  const quiet = follower ? follower.quietFor() : Infinity;
+  const running = !!(snap?.run && !snap.run.ended && (quiet < 180 || live));
+  return {
+    enabled: !!follower,
+    file: follower?.file || null,
+    error: follower?.error || null,
+    places: places?.origin || null,
+    gameRunning: running,
+    ...(snap || {}),
+    situation: live ? situation : null,
+    line: live && snap ? describe(situation, snap.confidence, snap.placeName, ship?.radarAlt ?? ship?.altitude) : null,
+  };
+}
+
+let lastLocPush = 0, locTimer = null;
+function pushLocation(force = false) {
+  const now = Date.now();
+  if (!force && now - lastLocPush < 250) {
+    if (!locTimer) locTimer = setTimeout(() => { locTimer = null; pushLocation(); }, 260);
+    return;
+  }
+  lastLocPush = now;
+  const loc = location();
+  const j = JSON.stringify(loc);
+  if (j === locJson && !force) return;
+  locJson = j;
+  for (const c of clients) send(c.ws, { type: 'loc', loc });
 }
 
 function onFrame(raw) {
   const now = Date.now();
   const n = normalize(raw, { t: now, source: source.kind });
   latest = { n, raw, at: now };
+  const st = steady.feed(stateOf(n), now);
+  if (st !== situation) { situation = st; pushLocation(); }
   frameCount++;
   if (now - fpsWindow >= 2000) { fps = (frameCount * 1000) / (now - fpsWindow); frameCount = 0; fpsWindow = now; }
   try { recorder.onFrame(n, raw); } catch (e) { console.error('recorder:', e.message); }
@@ -66,7 +145,7 @@ function status() {
     connected: !!source?.connected && !stale,
     linked: !!source?.connected,
     error: source?.error || null,
-    origin: source?.origin || null,
+    origin: source?.origin ? `${source.origin}${source.kind === 'game' && source.connected ? ` · port ${source.port}` : ''}` : null,
     fps: Math.round(fps * 10) / 10,
     lastFrameAt: latest?.at || null,
     clients: clients.size,
@@ -90,7 +169,7 @@ function broadcastStatus() {
 let lastStatusPush = 0;
 setInterval(() => {
   const now = Date.now();
-  if (now - lastStatusPush > 1000) { lastStatusPush = now; broadcastStatus(); }
+  if (now - lastStatusPush > 1000) { lastStatusPush = now; broadcastStatus(); pushLocation(); }
   if (!latest) return;
   for (const c of clients) {
     if (c.sentAt !== latest.at && now - c.lastSend >= 1000 / Math.min(S().broadcast.hz, c.hz || 60)) {
@@ -143,9 +222,10 @@ async function api(req, res, url) {
   if (p === '/api/status') return json(res, 200, { ...status(), log: recorder.stats(), version: '0.1.0' });
   if (p === '/api/settings' && req.method === 'GET') return json(res, 200, { settings: S(), defaults: DEFAULT_SETTINGS });
   if (p === '/api/settings' && req.method === 'PUT') {
-    const before = JSON.stringify(S().telemetry);
+    const before = JSON.stringify(S().telemetry), beforeLog = JSON.stringify(S().gamelog);
     const v = settings.update(await body(req));
     if (JSON.stringify(v.telemetry) !== before && !args.source) startSource();
+    else if (JSON.stringify(v.gamelog) !== beforeLog) { follower?.stop(); follower = null; startGameLog(); }
     recorder.prune();
     return json(res, 200, { settings: v });
   }
@@ -165,7 +245,34 @@ async function api(req, res, url) {
   }
   if (p === '/api/events') {
     const to = time(q.get('to'), Date.now());
-    return json(res, 200, recorder.events(time(q.get('from'), to - 3600000), to, Math.min(5000, +q.get('limit') || 500)));
+    const from = time(q.get('from'), to - 3600000);
+    const limit = Math.min(5000, +q.get('limit') || 500);
+    const loc = sessions.events(from / 1000, to / 1000, limit).map((e) => ({ t: Math.round(e.t * 1000), kind: 'location', name: e.kind, value: e.text }));
+    return json(res, 200, [...recorder.events(from, to, limit), ...loc].sort((a, b) => b.t - a.t).slice(0, limit));
+  }
+  if (p === '/api/location') return json(res, 200, location());
+  if (p === '/api/sessions') {
+    const to = time(q.get('to'), Date.now()) / 1000;
+    const from = time(q.get('from'), Date.now() - 30 * 86400000) / 1000;
+    return json(res, 200, { totals: sessions.totals(), runs: sessions.history(from, to), places: sessions.topPlaces(from, to), events: sessions.events(from, to, 200), location: location() });
+  }
+  if (p === '/api/sessions/import' && req.method === 'POST') {
+    if (!follower) return json(res, 400, { error: 'Game.log reading is off or no game folder is set.' });
+    return json(res, 200, follower.importBackups());
+  }
+  if (p === '/api/sessions/clear' && req.method === 'POST') {
+    sessions.clear();
+    follower?.stop(); follower = null; startGameLog();
+    return json(res, 200, { ok: true });
+  }
+  if (p === '/api/setup' && req.method === 'GET') return json(res, 200, setupStatus(S()));
+  if (p === '/api/setup/usercfg' && req.method === 'POST') {
+    const { userCfg, channelDir } = gameFiles(S());
+    if (!channelDir || !fs.existsSync(channelDir)) return json(res, 400, { error: 'Game folder not found. Check the StarCitizen.exe path.' });
+    const changes = cfgMissing(userCfg, S().actions.enabled);
+    if (!Object.keys(changes).length) return json(res, 200, { changed: [], status: setupStatus(S()) });
+    try { applyCfg(userCfg, changes); } catch (e) { return json(res, 500, { error: `Could not write user.cfg: ${e.message}` }); }
+    return json(res, 200, { changed: Object.keys(changes), status: setupStatus(S()) });
   }
   if (p === '/api/log/stats') return json(res, 200, recorder.stats());
   if (p === '/api/log/raw') return json(res, 200, recorder.rawAt(time(q.get('t'), Date.now())));
@@ -211,7 +318,7 @@ const wss = new WebSocketServer({ server, path: '/ws', perMessageDeflate: false 
 wss.on('connection', (ws) => {
   const c = { ws, hz: 60, raw: false, lastSend: 0, lastRaw: 0, sentAt: null, pendingEvents: [] };
   clients.add(c);
-  send(ws, { type: 'hello', status: status(), layouts: layouts.value });
+  send(ws, { type: 'hello', status: status(), layouts: layouts.value, loc: location() });
   if (latest) send(ws, { type: 'frame', n: latest.n });
   ws.on('message', (m) => {
     try {
@@ -234,6 +341,7 @@ server.listen(port, '0.0.0.0', () => {
 
 function shutdown() {
   source?.stop();
+  follower?.stop();
   recorder.close();
   process.exit(0);
 }

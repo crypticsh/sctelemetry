@@ -100,6 +100,7 @@
 
   const evShown = $derived(events.filter((e) => evFilter === 'all' || e.kind === evFilter));
   const evLabel = (e) => {
+    if (e.kind === 'location') return e.value;
     const v = e.value;
     if (v === 'true') return `${e.name.replace(/_/g, ' ')} ON`;
     if (v === 'false') return `${e.name.replace(/_/g, ' ')} OFF`;
@@ -149,7 +150,7 @@
       <div class="evhead">
         <h2>Event log</h2>
         <select class="ui-select evsel" bind:value={evFilter}>
-          <option value="all">All</option><option value="state">State changes</option><option value="warning">Warnings</option><option value="game">Game events</option><option value="system">Link / actions</option>
+          <option value="all">All</option><option value="state">State changes</option><option value="warning">Warnings</option><option value="game">Game events</option><option value="system">Link / actions</option><option value="location">Location (Game.log)</option>
         </select>
       </div>
       {#if evShown.length}
@@ -280,6 +281,9 @@
   }
   .system .v {
     color: var(--info);
+  }
+  .location .v {
+    color: var(--ink);
   }
   .foot {
     text-align: center;

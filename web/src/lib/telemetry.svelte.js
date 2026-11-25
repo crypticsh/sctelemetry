@@ -6,6 +6,7 @@ export const tele = $state({
   status: { connected: false, linked: false, source: null, error: null, fps: 0 },
   online: false, // websocket to our own server
   layouts: undefined, // shared layouts from the server (undefined = not loaded yet)
+  loc: null, // where you are, from Game.log (see server/gamelog)
   lastAt: 0,
 });
 
@@ -47,6 +48,9 @@ function connect() {
     } else if (msg.type === 'hello') {
       tele.status = msg.status;
       tele.layouts = msg.layouts ?? null;
+      if (msg.loc) tele.loc = msg.loc;
+    } else if (msg.type === 'loc') {
+      tele.loc = msg.loc;
     } else if (msg.type === 'layouts') {
       tele.layouts = msg.layouts ?? null;
     }

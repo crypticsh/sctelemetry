@@ -94,7 +94,7 @@ export function startFakeGame(port = 50052) {
     TriggerGameAction: { path: `/${svcName}/TriggerGameAction`, requestStream: false, responseStream: false, requestSerialize: ser(T('TriggerGameActionRequest')), requestDeserialize: des(T('TriggerGameActionRequest')), responseSerialize: ser(T('TriggerGameActionResponse')), responseDeserialize: des(T('TriggerGameActionResponse')) },
   }, {
     TelemetryStream(call) {
-      const iv = setInterval(() => call.write(stepSim(sim)), 1000 / 17);
+      const iv = setInterval(() => { call.write(stepSim(sim)); sim.logOut.length = 0; sim.logSched.length = 0; }, 1000 / 17);
       call.on('cancelled', () => clearInterval(iv));
       call.on('close', () => clearInterval(iv));
     },
