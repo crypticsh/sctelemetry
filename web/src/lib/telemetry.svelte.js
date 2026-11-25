@@ -10,6 +10,12 @@ export const tele = $state({
 });
 
 const listeners = new Set();
+const frameListeners = new Set();
+/** Called with every normalized frame as it arrives: fn(n). */
+export function onFrame(fn) {
+  frameListeners.add(fn);
+  return () => frameListeners.delete(fn);
+}
 /** Subscribe to game events / state-change pulses: fn(eventName). */
 export function onEvent(fn) {
   listeners.add(fn);
@@ -34,6 +40,7 @@ function connect() {
       tele.n = msg.n;
       tele.lastAt = performance.now();
       if (msg.raw) tele.raw = msg.raw;
+      for (const fn of frameListeners) fn(msg.n);
       if (msg.events) for (const e of msg.events) for (const fn of listeners) fn(e);
     } else if (msg.type === 'status') {
       tele.status = msg.status;

@@ -28,6 +28,12 @@ export function createSimState() {
     hydrogen: 1,
     noise: 8,
     decoy: 8,
+    boost: 1,
+    boosting: false,
+    boostIdle: 0,
+    alt: 0,
+    vsi: 0,
+    lastStep: Date.now(),
     power: { power_plants: true, engines: true, weapons: true, coolers: true, life_support: true, sensors: true, gravity_generators: true, shield_generators: true, shield_emitters: true },
     phase: 'landed',
     phaseUntil: 6000,
@@ -44,20 +50,41 @@ export function stepSim(s, now = Date.now()) {
   if (el > s.phaseUntil) {
     const next = { landed: 'liftoff', liftoff: 'cruise', cruise: 'combat', combat: 'return', return: 'landed' }[s.phase];
     s.phase = next;
-    s.phaseUntil = el + { landed: 8000, liftoff: 6000, cruise: 20000, combat: 25000, return: 10000 }[next];
+    s.phaseUntil = el + { landed: 8000, liftoff: 6000, cruise: 20000, combat: 25000, return: 90000 }[next];
     if (next === 'liftoff') { s.landed = false; ev.push('TAKEOFF'); }
     if (next === 'cruise') { s.gear = false; s.mode = 'NAV'; s.lights = false; }
     if (next === 'combat') { s.mode = 'SCM'; s.decoupled = Math.random() < 0.5; }
-    if (next === 'return') { s.decoupled = false; s.mode = 'SCM'; }
-    if (next === 'landed') { s.landed = true; s.speed = 0; ev.push('LANDED'); s.noise = 8; s.decoy = 8; }
+    if (next === 'return') { s.decoupled = false; s.mode = 'SCM'; s.alt = 420; s.vsi = -14; s.hot = !s.hot; s.recovered = false; }
+    if (next === 'liftoff') { s.alt = 0; }
+    if (next === 'landed') { s.landed = true; s.speed = 0; s.alt = 0; s.vsi = 0; ev.push('LANDED'); s.noise = 8; s.decoy = 8; }
   }
-  if (s.phase === 'return' && s.phaseUntil - el < 5000 && !s.gear) { s.gear = true; s.lights = true; }
+  const dt = Math.min(0.5, (now - s.lastStep) / 1000);
+  s.lastStep = now;
+  // Vertical profile: climb out, then a real descent to touchdown on return.
+  if (s.phase === 'liftoff') { s.vsi += (12 - s.vsi) * 0.05; s.alt += s.vsi * dt; }
+  if (s.phase === 'return') {
+    // Every other approach comes in hot, to show SINK RATE / PULL UP.
+    if (s.hot && !s.recovered && s.vsi < -1 && s.alt / -s.vsi < 3) s.recovered = true;
+    const want = s.hot && !s.recovered ? -45 : s.alt > 150 ? -14 : s.alt > 25 ? -4 : -1.2;
+    s.vsi += (want - s.vsi) * 0.05;
+    s.alt = Math.max(0, s.alt + s.vsi * dt);
+    if (s.alt < 180 && !s.gear) { s.gear = true; s.lights = true; }
+    if (s.alt <= 0 && !s.landed) { s.landed = true; s.vsi = 0; s.phaseUntil = el + 1000; }
+  }
+  if (s.phase !== 'liftoff' && s.phase !== 'return') s.vsi = 0;
+  // Boost: bursts in combat drain it, then it recharges after a short delay.
+  if (s.phase === 'combat' && !s.boosting && s.boost > 0.6 && Math.random() < 0.012) s.boosting = true;
+  if (s.boosting) {
+    s.boost = Math.max(0, s.boost - 0.22 * dt);
+    if (s.boost <= 0.05 || Math.random() < 0.01) { s.boosting = false; s.boostIdle = 1.5; }
+  } else if (s.boostIdle > 0) s.boostIdle -= dt;
+  else s.boost = Math.min(1, s.boost + 0.09 * dt);
   if (s.phase === 'cruise' && Math.random() < 0.003) s.spooled = !s.spooled;
   if (s.phase !== 'cruise') s.spooled = false;
 
-  const target = { landed: 0, liftoff: 40, cruise: 1100, combat: 180 + 120 * Math.sin(el / 2300), return: 60 }[s.phase];
+  const target = { landed: 0, liftoff: 40, cruise: 1100, combat: 180 + 120 * Math.sin(el / 2300) + (s.boosting ? 120 : 0), return: s.alt > 150 ? 70 : s.alt > 25 ? 30 : 6 }[s.phase];
   s.speed += (target - s.speed) * 0.04 + (s.phase === 'combat' ? (Math.random() - 0.5) * 6 : 0);
-  if (s.phase === 'landed') s.speed = 0;
+  if (s.phase === 'landed' || s.landed) s.speed = 0;
   s.heading = (s.heading + (s.phase === 'combat' ? 2.4 * Math.sin(el / 3100) : 0.05) + 360) % 360;
   const g = s.phase === 'landed' ? 0 : Math.max(0, (s.phase === 'combat' ? 3.5 + 3 * Math.sin(el / 1700) : 1) + (Math.random() - 0.5) * 0.4);
   s.gMax = Math.max(s.gMax, g);
@@ -80,7 +107,8 @@ export function stepSim(s, now = Date.now()) {
   if (Math.random() < 0.0015) { s.power.weapons = !s.power.weapons; }
   if (!s.power.weapons && Math.random() < 0.01) s.power.weapons = true;
 
-  const alt = s.phase === 'cruise' ? 3.4028234663852886e38 : s.phase === 'landed' ? 0 : 50 + s.speed * 3;
+  const space = s.phase === 'cruise' || s.phase === 'combat';
+  const alt = space ? 3.4028234663852886e38 : s.alt;
   const level = s.faces.reduce((a, b) => a + b, 0) / FACES / 100;
 
   return {
@@ -94,10 +122,10 @@ export function stepSim(s, now = Date.now()) {
         body_temperature: { current: 36.8, max: 40 },
         heart_rate: 70 + g * 12 + (Math.random() - 0.5) * 4,
         pressure: 101.3,
-        gravity: s.landed ? 1 : 0,
+        gravity: space ? 0 : 1,
         intoxication_level: 0,
       },
-      environment: { external_temperature: s.landed ? 18 : -270, breathable_atmosphere: s.landed, ambient_radiation_rate: 0.01 },
+      environment: { external_temperature: space ? -270 : 18, breathable_atmosphere: !space, ambient_radiation_rate: 0.01 },
     },
     vehicle: {
       state: {
@@ -117,13 +145,13 @@ export function stepSim(s, now = Date.now()) {
           instruments: {
             speed: s.speed,
             altitude: alt,
-            radar_altitude: s.phase === 'cruise' ? alt : Math.max(0, alt - 20),
+            radar_altitude: alt,
             heading: s.heading,
-            vertical_speed_indicator: s.phase === 'liftoff' ? 12 : s.phase === 'return' ? -8 : 0,
+            vertical_speed_indicator: s.vsi,
             g_meter: { current: g, max: s.gMax },
             hydrogen_fuel: s.hydrogen,
             quantum_fuel: 0,
-            boost: { reserves: 0.8, engaged: false, output: 0, critical: false },
+            boost: { reserves: s.boost, engaged: s.boosting, output: s.boosting ? 1 : 0, critical: s.boost < 0.1 },
           },
         },
       },

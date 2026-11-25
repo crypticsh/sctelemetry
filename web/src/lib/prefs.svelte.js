@@ -12,6 +12,10 @@ const DEFAULTS = {
   haptics: true,
   screenIndex: 0,
   logsRange: 3600000,
+  alertSound: false,
+  alertVoice: true,
+  alertVolume: 1,
+  gaugeCell: 210,
 };
 
 function load() {

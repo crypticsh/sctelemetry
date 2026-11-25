@@ -2,6 +2,8 @@
   import Cockpit from './components/Cockpit.svelte';
   import Logs from './components/Logs.svelte';
   import Settings from './components/Settings.svelte';
+  import GaugePanel from './components/gauges/GaugePanel.svelte';
+  import { alerts } from './lib/alerts.svelte.js';
   import Badge from './themes/Badge.svelte';
   import { tele } from './lib/telemetry.svelte.js';
   import { prefs } from './lib/prefs.svelte.js';
@@ -40,7 +42,7 @@
   let lock = null;
   async function wake() {
     try {
-      if (route === 'cockpit' && document.visibilityState === 'visible' && 'wakeLock' in navigator) lock = await navigator.wakeLock.request('screen');
+      if ((route === 'cockpit' || route === 'gauges') && document.visibilityState === 'visible' && 'wakeLock' in navigator) lock = await navigator.wakeLock.request('screen');
     } catch { /* not allowed on plain http */ }
   }
   $effect(() => {
@@ -69,17 +71,23 @@
     <i></i>{linkText}{#if st.connected}<small>{Math.round(st.fps)}Hz</small>{/if}
   </span>
 
+  {#if alerts.top}
+    <span class="alert" class:warn={alerts.warning}>{alerts.top}</span>
+  {/if}
   <span class="spacer"></span>
   <span class="clock mono">{clock}</span>
 
   <nav>
-    {#if route === 'cockpit'}
+    {#if route === 'cockpit' || route === 'gauges'}
       <button class="nb" class:on={editing} onclick={() => (editing = !editing)} aria-label="Edit layout" title="Edit layout">
         <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" /></svg>
       </button>
     {/if}
     <button class="nb" class:on={route === 'cockpit'} onclick={() => go('cockpit')} aria-label="Cockpit" title="Cockpit">
       <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2" /><path d="M8 21h8M12 17v4" /></svg>
+    </button>
+    <button class="nb" class:on={route === 'gauges'} onclick={() => go('gauges')} aria-label="Gauges" title="Gauges">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" /><path d="M12 13l4-4M7 16h0M17 16h0M12 7v1" /></svg>
     </button>
     <button class="nb" class:on={route === 'logs'} onclick={() => go('logs')} aria-label="Flight log" title="Flight log">
       <svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 6M3 21h18" /></svg>
@@ -97,6 +105,8 @@
   <Logs />
 {:else if route === 'settings'}
   <Settings />
+{:else if route === 'gauges'}
+  <GaugePanel bind:editing />
 {:else}
   <Cockpit bind:editing />
 {/if}
@@ -175,6 +185,21 @@
   }
   .spacer {
     flex: 1;
+  }
+  .alert {
+    font: 600 13px 'Barlow Condensed', var(--font-label);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 4px;
+    background: #ffb31a;
+    color: #2a1c00;
+    white-space: nowrap;
+  }
+  .alert.warn {
+    background: #ff4436;
+    color: #2a0302;
+    animation: blink 0.8s steps(2, jump-none) infinite;
   }
   .clock {
     color: var(--label-dim);
