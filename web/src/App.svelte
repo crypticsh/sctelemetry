@@ -4,6 +4,7 @@
   import Settings from './components/Settings.svelte';
   import GaugePanel from './components/gauges/GaugePanel.svelte';
   import Sessions from './components/Sessions.svelte';
+  import Orders from './components/Orders.svelte';
   import { alerts } from './lib/alerts.svelte.js';
   import Badge from './themes/Badge.svelte';
   import { tele } from './lib/telemetry.svelte.js';
@@ -97,13 +98,16 @@
     <button class="nb" class:on={route === 'sessions'} onclick={() => go('sessions')} aria-label="Sessions and location" title="Sessions and location">
       <svg viewBox="0 0 24 24"><path d="M12 21s-6-5.4-6-10a6 6 0 0 1 12 0c0 4.6-6 10-6 10z" /><circle cx="12" cy="11" r="2.2" /></svg>
     </button>
+    <button class="nb" class:on={route === 'orders'} onclick={() => go('orders')} aria-label="Open orders" title="Open orders">
+      <svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2" /><path d="M9 4V3h6v1M9 10h6M9 14h6M9 18h3" /></svg>
+    </button>
     <button class="nb" class:on={route === 'logs'} onclick={() => go('logs')} aria-label="Flight log" title="Flight log">
       <svg viewBox="0 0 24 24"><path d="M3 17l5-6 4 3 4-7 5 6M3 21h18" /></svg>
     </button>
     <button class="nb" class:on={route === 'settings'} onclick={() => go('settings')} aria-label="Settings" title="Settings">
       <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" /></svg>
     </button>
-    <button class="nb" onclick={fullscreen} aria-label="Full screen" title="Full screen">
+    <button class="nb fs" onclick={fullscreen} aria-label="Full screen" title="Full screen">
       <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
     </button>
   </nav>
@@ -117,6 +121,8 @@
   <GaugePanel bind:editing />
 {:else if route === 'sessions'}
   <Sessions />
+{:else if route === 'orders'}
+  <Orders />
 {:else}
   <Cockpit bind:editing />
 {/if}
@@ -267,7 +273,10 @@
       display: none;
     }
     .nb {
-      width: 36px;
+      width: 34px;
+    }
+    .nb.fs {
+      display: none;
     }
     .top {
       gap: 6px;

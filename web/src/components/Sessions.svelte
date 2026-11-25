@@ -102,6 +102,7 @@
             {#if loc.path?.length}<div class="path">{loc.path.join(' › ')}</div>{/if}
             <div class="chips">
               {#if loc.armistice}<span class="chip ok">Armistice zone</span>{/if}
+              {#if loc.monitored}<span class="chip">Monitored space</span>{/if}
               {#if loc.jurisdiction}<span class="chip">{loc.jurisdiction} jurisdiction</span>{/if}
               {#if loc.confidence}<span class="chip dim">{{ exact: 'exact place', near: 'near this body', area: 'in this area', system: 'system only' }[loc.confidence]}</span>{/if}
             </div>
@@ -118,12 +119,25 @@
             <dt>Shard</dt><dd class="mono">{loc.shard || '—'}</dd>
             <dt>On this shard</dt><dd>{loc.shardSince && loc.gameRunning ? dur(now - loc.shardSince) : '—'}</dd>
             <dt>This game run</dt><dd>{loc.run ? dur((loc.gameRunning ? now : loc.run.ended || loc.run.lastAt) - loc.run.started) : '—'}</dd>
+            <dt>Ship</dt><dd>{loc.ship ? loc.ship.name : '—'}{loc.fleet ? ` · ${loc.fleet} in your fleet` : ''}</dd>
             <dt>Game</dt><dd>{loc.run ? `${loc.run.channel || '?'} ${loc.run.version || ''}` : '—'}</dd>
             <dt>Latest</dt><dd>{loc.event ? `${loc.event.text} · ${clock(loc.event.at)}` : '—'}</dd>
           </dl>
         </div>
       {/if}
     </section>
+
+    {#if loc.loadout?.items?.length}
+      <section class="ui-card">
+        <h2>Loadout at last spawn</h2>
+        <ul class="loadout">
+          {#each loc.loadout.items as it}
+            <li><span>{it.name}</span><span class="dim small mono">{it.port}</span></li>
+          {/each}
+        </ul>
+        <p class="dim small">From the items the game attaches to your character when you spawn ({when(loc.loadout.at)}).</p>
+      </section>
+    {/if}
 
     {#if err}<div class="ui-card">Could not load play history: {err}</div>{/if}
 
@@ -153,6 +167,45 @@
         <div class="axis"><span>{daily[0]?.day.toLocaleDateString([], { month: 'short', day: 'numeric' })}</span><span>Today</span></div>
         <p class="dim small">Solid: on a shard. Faint: game open (menus and loading included). Peak {dur(maxDay)}.</p>
       </section>
+
+      <div class="two">
+        <section class="ui-card">
+          <h2>Shop purchases and sales</h2>
+          {#if !data.trades.length}<p class="dim">None in this range.</p>{/if}
+          {#if data.trades.length}
+            {@const spent = data.trades.filter((t) => t.kind === 'buy' && t.result === 'ok').reduce((a, t) => a + t.price, 0)}
+            {@const earned = data.trades.filter((t) => t.kind === 'sell' && t.result === 'ok').reduce((a, t) => a + t.price, 0)}
+            <p class="tot">Spent <b>{Math.round(spent).toLocaleString()}</b> · earned <b>{Math.round(earned).toLocaleString()}</b> aUEC</p>
+            <table>
+              <tbody>
+                {#each data.trades as t}
+                  <tr>
+                    <td class="dim small">{when(t.t)}</td>
+                    <td><span class="kind {t.kind}">{t.kind === 'buy' ? 'Bought' : 'Sold'}</span> {t.name}{t.qty > 1 ? ` ×${t.qty}` : ''}<br /><span class="dim small">{t.shop}{t.result !== 'ok' ? ` · ${t.result}` : ''}</span></td>
+                    <td class="num">{t.kind === 'buy' ? '−' : '+'}{Math.round(t.price).toLocaleString()}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          {/if}
+        </section>
+
+        <section class="ui-card">
+          <h2>Quantum trips</h2>
+          {#if !data.trips.length}<p class="dim">None in this range.</p>{/if}
+          <table>
+            <tbody>
+              {#each data.trips as q}
+                <tr>
+                  <td class="dim small">{when(q.arrived)}</td>
+                  <td>{q.to_name || '?'}<br /><span class="dim small">{q.ship || ''}{q.started ? ` · ${dur(q.arrived - q.started)} from plotting` : ''}</span></td>
+                  <td class="num dim small">{q.fuel != null ? `fuel est. ${Math.round(q.fuel).toLocaleString()}` : ''}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </section>
+      </div>
 
       <div class="two">
         <section class="ui-card">
@@ -256,6 +309,15 @@
   .events .k { font-size: 11px; text-transform: uppercase; color: var(--ui-text-dim); }
   .events .k.quantum { color: var(--info); }
   .events .k.session { color: var(--ok); }
+  .events .k.shop { color: var(--ink); }
+  .events .k.health { color: var(--danger); }
+  .events .k.cargo { color: var(--warn); }
+  .tot { margin: 0 0 8px; font-size: 14px; }
+  .kind { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .kind.buy { color: var(--info); }
+  .kind.sell { color: var(--ok); }
+  .loadout { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 16px; }
+  .loadout li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--ui-line); font-size: 14px; }
   .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   @media (max-width: 640px) {
     .nowgrid { grid-template-columns: 1fr; }

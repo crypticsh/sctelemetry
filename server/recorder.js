@@ -80,10 +80,11 @@ export class Recorder {
     const s = this.getSettings().logging;
     this.lastPrune = Date.now();
     if (s.retentionDays > 0) {
-      const cut = Date.now() - s.retentionDays * 86400000;
-      this.db.prepare('DELETE FROM samples WHERE t < ?').run(cut);
-      this.db.prepare('DELETE FROM events WHERE t < ?').run(cut);
+      this.db.prepare('DELETE FROM samples WHERE t < ?').run(Date.now() - s.retentionDays * 86400000);
     }
+    const evDays = this.getSettings().retention?.flightEventsDays ?? s.retentionDays;
+    if (evDays > 0) this.db.prepare('DELETE FROM events WHERE t < ?').run(Date.now() - evDays * 86400000);
+    this.onPrune?.();
     if (s.maxDbMB > 0) {
       for (let i = 0; i < 20 && this.sizeBytes() > s.maxDbMB * 1048576; i++) {
         const { n } = this.q.bounds.get();

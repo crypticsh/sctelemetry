@@ -7,6 +7,7 @@ export const tele = $state({
   online: false, // websocket to our own server
   layouts: undefined, // shared layouts from the server (undefined = not loaded yet)
   loc: null, // where you are, from Game.log (see server/gamelog)
+  ordersRev: 0, // bumps when any device changes an order
   lastAt: 0,
 });
 
@@ -49,6 +50,8 @@ function connect() {
       tele.status = msg.status;
       tele.layouts = msg.layouts ?? null;
       if (msg.loc) tele.loc = msg.loc;
+    } else if (msg.type === 'orders') {
+      tele.ordersRev++;
     } else if (msg.type === 'loc') {
       tele.loc = msg.loc;
     } else if (msg.type === 'layouts') {

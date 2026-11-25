@@ -31,8 +31,30 @@
     }
   }
 
+  let dataInfo = $state(null);
+  let confirmPurge = $state(null);
+  async function loadData() {
+    try { dataInfo = await api('/api/data'); } catch { dataInfo = null; }
+  }
+  async function purge(kind) {
+    if (confirmPurge !== kind) { confirmPurge = kind; setTimeout(() => (confirmPurge = null), 3000); return; }
+    confirmPurge = null;
+    try { await api('/api/data/purge', { method: 'POST', body: { kind } }); toast('Deleted'); loadData(); } catch (e) { toast(e.message, 'warn'); }
+  }
+  const KINDS = [
+    { kind: 'samples', name: 'Flight samples', desc: 'speed, G, shields, fuel… every few seconds', keep: ['logging', 'enabled'], days: ['logging', 'retentionDays'] },
+    { kind: 'flightEvents', name: 'Flight events', desc: 'gear, decoupled, power, warnings, actions', keep: ['logging', 'logEvents'], days: ['retention', 'flightEventsDays'] },
+    { kind: 'locationEvents', name: 'Location events', desc: 'landed at, quantum travel, jurisdiction (Game.log)', keep: ['retention', 'locationEvents'], days: ['retention', 'locationEventsDays'] },
+    { kind: 'visits', name: 'Place visits', desc: 'time spent at each place', keep: ['retention', 'visits'], days: ['retention', 'visitsDays'] },
+    { kind: 'sessions', name: 'Play sessions', desc: 'game runs and shard sessions (play time)', keep: ['retention', 'sessions'], days: ['retention', 'sessionsDays'] },
+    { kind: 'trades', name: 'Shop purchases and sales', desc: 'item, shop, price (Game.log)', keep: ['retention', 'trades'], days: ['retention', 'tradesDays'] },
+    { kind: 'trips', name: 'Quantum trips', desc: 'destination, ship, fuel estimate (Game.log)', keep: ['retention', 'trips'], days: ['retention', 'tripsDays'] },
+    { kind: 'orders', name: 'Finished orders', desc: 'completed or cancelled; open orders are always kept', keep: null, days: ['retention', 'ordersDays'] },
+  ];
+
   async function load() {
     loadSetup();
+    loadData();
     const r = await api('/api/settings');
     s = r.settings;
     saved = JSON.stringify(r.settings);
@@ -262,17 +284,34 @@
       </section>
 
       <section class="ui-card">
-        <h2>Logging</h2>
+        <h2>Data kept</h2>
+        <div class="tbl">
+          <table class="kept">
+            <thead><tr><th>Data</th><th>Record</th><th>Delete after (days, 0 = never)</th><th>Stored now</th><th></th></tr></thead>
+            <tbody>
+              {#each KINDS as k}
+                {@const info = dataInfo?.kinds?.[k.kind]}
+                <tr>
+                  <td><b>{k.name}</b><br /><span class="hint">{k.desc}</span></td>
+                  <td>{#if k.keep}<input type="checkbox" aria-label="Record {k.name}" bind:checked={s[k.keep[0]][k.keep[1]]} />{:else}<span class="hint">—</span>{/if}</td>
+                  <td><input class="ui-input days" type="number" min="0" aria-label="{k.name}: days to keep" bind:value={s[k.days[0]][k.days[1]]} /></td>
+                  <td class="num">{info ? info.n.toLocaleString() : '…'}{#if info?.first}<br /><span class="hint">since {new Date(info.first).toLocaleDateString()}</span>{/if}</td>
+                  <td><button class="ui-btn small danger" onclick={() => purge(k.kind)}>{confirmPurge === k.kind ? 'Tap again' : 'Delete all'}</button></td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        <p class="hint">Old data is deleted every {s.logging.pruneEveryMin} minutes. Database size: {size(dataInfo?.sizeBytes)}. Save the settings to apply changes.</p>
+      </section>
+
+      <section class="ui-card">
+        <h2>Flight sample logging</h2>
         <div class="grid2">
-          <label class="ui-check full"><input type="checkbox" bind:checked={s.logging.enabled} /> Record telemetry</label>
           <label class="ui-field">
             Log every (ms)
             <input class="ui-input" type="number" min="50" step="50" bind:value={s.logging.intervalMs} />
             <span class="hint">About {perDay.toLocaleString()} samples per day of flying. Game sends ~17/s (≈59 ms).</span>
-          </label>
-          <label class="ui-field">
-            Keep logs for (days, 0 = forever)
-            <input class="ui-input" type="number" min="0" bind:value={s.logging.retentionDays} />
           </label>
           <label class="ui-field">
             Max log size (MB, 0 = no limit)
@@ -285,7 +324,6 @@
           </label>
           <label class="ui-check"><input type="checkbox" bind:checked={s.logging.onlyWhenSeated} /> Only while seated in a ship<small>Skip samples while on foot.</small></label>
           <label class="ui-check"><input type="checkbox" bind:checked={s.logging.onlyOnChange} /> Skip unchanged samples<small>Saves space when parked.</small></label>
-          <label class="ui-check"><input type="checkbox" bind:checked={s.logging.logEvents} /> Log state changes and game events<small>Gear, decoupled, power, warnings, seat changes…</small></label>
           <label class="ui-check"><input type="checkbox" bind:checked={s.logging.logFullFrames} /> Store full raw frames<small>Everything the game sends, with each sample. Large.</small></label>
         </div>
         {#if stats}
@@ -442,6 +480,38 @@
   }
   code {
     font-size: 11px;
+  }
+  .tbl {
+    overflow-x: auto;
+  }
+  .kept {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  .kept th,
+  .kept td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--ui-line);
+    vertical-align: middle;
+  }
+  .kept th {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ui-text-dim);
+  }
+  .kept input[type='checkbox'] {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--ink);
+  }
+  .kept .days {
+    width: 90px;
+  }
+  .kept .num {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .checks {
     list-style: none;

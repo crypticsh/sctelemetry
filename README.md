@@ -6,6 +6,8 @@ Cockpit-style telemetry screens for Star Citizen that run on your phones and tab
 - **Configurable side panels**: status lights (CPLD, ESP, GSAF…), toggle switches, buttons, gauges and counters. You can move, rename, rebind and add them, and change what they do.
 - **Gauges page**: aircraft-style instruments (airspeed, attitude, altimeter, radar altimeter, two vertical speed gauges, turn coordinator, heading, time to impact, G-meter, hull/shield, fuel, boost charge, and more). You can drag them into any order, resize and tune them, add or remove them. Calculated alerts (pull up, sink rate, gear, overspeed, G limit, fuel…) light an alert panel and can play tones and spoken callouts.
 - **Where you are and play history** (from `Game.log`): your shard, the place (city or station, else planet or moon, else jurisdiction, else system), armistice, jurisdiction, quantum travel and a one-line summary such as "Flying at Cellin, 940 m above the ground". The Sessions page logs how long you play, each shard you join and leave, and where you spent your time.
+- **Open orders**: commodity orders you place at a kiosk are picked up from `Game.log` (price, shop, place) so you know what still has to go down the freight elevator. Name a commodity once and it is remembered. Mark orders as sent, completed or cancelled. You can also add orders by hand.
+- **Shop and travel history** from `Game.log`: purchases and sales (item, shop, price, success), quantum trips (destination, ship, fuel estimate), freight elevator use, your ship and fleet size, the loadout you spawned with, and HUD notices like "Hangar Request Completed" or "Bleeding".
 - **Flight data recorder**: samples and state changes go into SQLite. You can view them as charts and an event log, and export them as CSV.
 - **Themes**: Drake is complete. Crusader, RSI and ARGO have first-pass palettes.
 - **Optional in-game actions**: switches and buttons can send actions like gear, decouple and power. These are off by default.
@@ -62,6 +64,7 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
 | ✎ (pencil) | Edit the layout. Drag ⠿ to move widgets or panels, tap a widget to configure it, use ⚙ for panel settings, and **Screens** to set the order and tabs. *Save & close* stores the layout for every device. |
 | Gauges | The instrument panel. Use the pencil to add, drag, resize, tune or remove gauges. **Alert settings** sets the thresholds and turns sound on for this device. |
 | Sessions (map pin) | Where you are now, time on the current shard, play time per day, game runs with their shard sessions, where you spent time, and the location event log. **Import old logs** reads the finished logs the game keeps in `logbackups`. |
+| Orders (clipboard) | Open orders grouped by where they were placed (the elevator they go down), recent freight elevator activity, and finished orders. |
 | Flight log | Charts for any logged channel (5 min to 7 days, or step back in time), an event log of state changes, warnings and game events, and CSV export. |
 | Settings | Theme, per-device layout profile, logging (interval, retention, size cap…), update rate, actions, and a **live data inspector** that shows every field the game sends. Tap a field to copy its path for a widget. |
 
@@ -82,6 +85,10 @@ Layouts are stored on the server. Make one per device in Settings (*Duplicate*, 
 | ATMO light | shown hatched (unknown) unless the game reports an atmospheric-flight setting |
 
 The game's exact field types are not documented. `server/telemetry/normalize.js` reads every field defensively: a value can be a number, `{current, max}`, a bool and so on. Anything else can be reached from a widget as `raw.<path>`.
+
+### What's kept, and for how long
+
+**Settings → Data kept** lists each kind of data (flight samples, flight events, location events, place visits, play sessions, shop transactions, quantum trips, finished orders). For each one you can choose whether to record it, how many days to keep it (0 = forever), see how much is stored, or delete it all. Open orders are never deleted automatically.
 
 ### Game.log, places and privacy
 

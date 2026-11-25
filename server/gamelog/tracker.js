@@ -27,6 +27,44 @@ const RE_HANDLE = /<Legacy login response>.*?Handle\[([^\]]+)\]/;
 const RE_QT_SELECT = /<Player Selected Quantum Target - Local>.*?selected point (\S+) as their destination/;
 const RE_QT_START = /<Calculate Route>.*?Projected Start Location is (.+?) for route to destination (\S+)/;
 const RE_QT_ARRIVED = /<Quantum Drive Arrived - Arrived at Final Destination>/;
+const RE_ATTACH = /<AttachmentReceived> Player\[([^\]]*)\] Attachment\[[^,\]]*, ([^,\]]+), \d+\] Status\[[^\]]*\] Port\[([^\]]+)\]/;
+// Body parts and face details are attachments too; they are not gear.
+const NOT_GEAR = /^(body_|head_|pu_protos_head|shared_scalp|brows_|hair_|default_lensdisplay|fps_defaultradar)/i;
+const MAKERS = { kegr: 'Kegr', rsi: 'RSI', klwe: 'Klaus & Werner', grin: 'Greycat', crlf: 'CureLife', behr: 'Behring', kast: 'Kastak Arms', gmni: 'Gemini', ksar: 'Kastak Arms', apar: 'Apocalypse Arms', hdgw: 'Hedeby Gunworks', vgl: 'Virgil', lbco: 'Lightning Bolt Co.', sasu: 'Sakura Sun', cds: 'Clark Defense Systems', grav: 'Gyson', banu: 'Banu' };
+export function prettyItem(cls) {
+  const words = String(cls).split('_').filter((w) => w && !/^\d+$/.test(w));
+  const maker = MAKERS[words[0]?.toLowerCase()];
+  if (maker) words.shift();
+  const rest = words.map((w) => (w.length <= 3 && /^[a-z]+$/i.test(w) && w === w.toUpperCase() ? w : w[0].toUpperCase() + w.slice(1))).join(' ');
+  return (maker ? maker + ' ' : '') + rest;
+}
+// Shops, commodity orders, freight elevator, ship (4.x lines, build 13220821).
+const RE_SHOP_REQ = /<CEntityComponentShopUIProvider::SendShop(Buy|Sell)Request>.*?shopId\[(\d+)\] shopName\[([^\]]*)\].*?client_price\[([\d.]+)\].*?itemName\[([^\]]+)\] quantity\[(\d+)\]/;
+const RE_SHOP_RESP = /<CEntityComponentShopUIProvider::RmShopFlowResponse>.*?shopId\[(\d+)\].*?result\[([^\]]+)\] type\[([^\]]+)\]/;
+const RE_COMM = /<CEntityComponentCommodityUIProvider::SendCommodity(Sell|Buy)Request>.*?shopId\[(\d+)\] shopName\[([^\]]*)\].*?amount\[([\d.]+)\] resourceGUID\[([^\]]+)\].*?quantity\[(\d+)\]/;
+const RE_FREIGHT = /<CEntityComponentFreightElevatorUIProvider::Fill(\w+)Request>.*?Entities: (\d+), Location: (\d+)/;
+const RE_PLATFORM = /<CSCLoadingPlatformManager::OnLoadingPlatformStateChanged>.*?Loading Platform Manager \[LoadingPlatformManager_FreightElevator[^\]]*\] Platform state changed to (\w+)/;
+const RE_QT_SHIP = /<(?:Player Selected Quantum Target - Local|Quantum Drive Arrived[^>]*|Player Requested Fuel to Quantum Target[^>]*)>.*?\| NOT AUTH \| ([A-Za-z]+_[A-Za-z0-9_]+?)_(\d{6,})\[/;
+const RE_FUEL = /<Calculate Route>.*?Successfully calculated route to (\S+) fuel estimate ([\d.]+)/;
+const RE_SHIP_CALL = /<CEntityComponentShipListProvider::SetVehicleSpawningInformations>/;
+const RE_SHIP_LEAVE = /<Vehicle Control Flow>.*?releasing control token for '([A-Za-z]+_[A-Za-z0-9_]+?)_\d{6,}'/;
+const RE_FLEET = /<VehicleListQuery>.*?Retrieved (\d+) entitlements/;
+// HUD notices that are tutorials or chatter, not events worth keeping.
+const NOTICE_SKIP = /^(Medical Device|You have joined channel|You have left channel|Hint|Tip)\b/i;
+
+const SHIP_MAKERS = { ANVL: 'Anvil', AEGS: 'Aegis', DRAK: 'Drake', RSI: 'RSI', CRUS: 'Crusader', ORIG: 'Origin', MISC: 'MISC', ARGO: 'ARGO', CNOU: 'C.O.', TMBL: 'Tumbril', BANU: 'Banu', ESPR: 'Esperia', KRIG: 'Kruger', XIAN: 'Aopoa', GAMA: 'Gatac', MRAI: 'Mirai', GRIN: 'Greycat' };
+export function prettyShip(cls) {
+  const [maker, ...rest] = String(cls).split('_');
+  return [SHIP_MAKERS[maker] || maker, ...rest].join(' ');
+}
+export function prettyShop(name) {
+  return String(name).replace(/^SCShop_/, '').split('_').filter((w) => w && !/^\d+$/.test(w))
+    .map((w) => ({ NewBab: 'New Babbage', NewBabbage: 'New Babbage' }[w] || w)).join(' ');
+}
+// Names players know for a few common items (class name -> shop name).
+const ITEM_NAMES = { crlf_consumable_healing_01: 'MedPen (Hemozal)', kegr_fire_extinguisher_01: 'Fire Extinguisher' };
+export const itemName = (cls) => ITEM_NAMES[cls] || prettyItem(cls);
+
 const RE_QT_CAL = /^Quantum Travel Calibration (Started|Complete) By (.*?):?\s*$/i;
 // Run information
 const RE_VERSION = /^<[^>]+> FileVersion: (\S+)/;
@@ -67,6 +105,12 @@ export class Tracker extends EventEmitter {
   }
 
   resetRun() {
+    this.loadout = null; // { at, items: [{ port, item, name }] }
+    this.ship = null; // { cls, name, since }
+    this.fleet = null; // number of ships on the account
+    this.shopReq = new Map(); // shopId -> pending buy/sell
+    this.freight = null; // { at, state, entities }
+    this.lastAttach = 0;
     this.run = null; // { key, started, ... }
     this.lastTs = 0;
     this.ended = null;
@@ -88,10 +132,15 @@ export class Tracker extends EventEmitter {
     this.pending = null; // [logTs, body, wallTs]
     this.burstUntil = 0;
     this.jurisdiction = null;
+    this.monitored = null;
     this.qt = null;
     this.event = null;
     this.lastPlace = undefined;
+    this.lastLanded = null;
+    this.lastLandedAt = 0;
+    this.leftSince = 0;
   }
+  // (the loadout is kept across shard changes: it belongs to the character)
 
   // ------------------------------------------------------------------ feeding
 
@@ -124,6 +173,53 @@ export class Tracker extends EventEmitter {
       return;
     }
     if ((m = RE_HANDLE.exec(line))) { this.handle = m[1]; return; }
+    if ((m = RE_SHOP_REQ.exec(line))) {
+      this.shopReq.set(m[2], { at: ts, kind: m[1].toLowerCase(), shopId: m[2], shop: prettyShop(m[3]), item: m[5], name: itemName(m[5]), qty: +m[6], price: +m[4], result: 'pending' });
+      return;
+    }
+    if ((m = RE_SHOP_RESP.exec(line))) {
+      const t = this.shopReq.get(m[1]);
+      if (t) {
+        this.shopReq.delete(m[1]);
+        t.result = m[2].toLowerCase() === 'success' ? 'ok' : m[2];
+        this.emit('trade', t);
+        if (t.result === 'ok') this.say(ts, 'shop', `${t.kind === 'buy' ? 'Bought' : 'Sold'} ${t.name} for ${Math.round(t.price).toLocaleString('en-US')} aUEC`);
+        else this.say(ts, 'shop', `${t.kind === 'buy' ? 'Purchase' : 'Sale'} of ${t.name} failed (${m[2]})`);
+      }
+      return;
+    }
+    if ((m = RE_COMM.exec(line))) {
+      const o = { at: ts, kind: m[1].toLowerCase(), shopId: m[2], shop: prettyShop(m[3]), amount: +m[4], guid: m[5], count: +m[6], place: this.best()?.id ?? null };
+      this.emit('order', o);
+      this.say(ts, 'shop', `Commodity ${o.kind} order placed at ${o.shop}: ${Math.round(o.amount).toLocaleString('en-US')} aUEC`);
+      return;
+    }
+    if ((m = RE_FREIGHT.exec(line))) {
+      this.freight = { at: ts, state: 'requested', entities: +m[2], place: this.best()?.id ?? null };
+      this.emit('freight', { ...this.freight });
+      this.say(ts, 'cargo', `Freight elevator request: ${m[2]} item${m[2] === '1' ? '' : 's'}`);
+      return;
+    }
+    if ((m = RE_PLATFORM.exec(line))) {
+      const st = m[1];
+      if (this.freight && ts - this.freight.at < 600 && ['RaisingPlatform', 'OpenIdle', 'LoweringPlatform', 'ClosedIdle'].includes(st)) {
+        this.freight.state = st;
+        if (st === 'OpenIdle') this.say(ts, 'cargo', 'Freight elevator open');
+        if (st === 'LoweringPlatform') this.freight.lowered = true;
+        if (st === 'ClosedIdle' && this.freight.lowered) this.say(ts, 'cargo', 'Freight elevator back down');
+        this.changed();
+      }
+      return;
+    }
+    if ((m = RE_FUEL.exec(line))) {
+      if (this.qt && this.qt.target === m[1]) { this.qt.fuel = +m[2]; this.changed(); }
+      return;
+    }
+    if ((m = RE_FLEET.exec(line))) { this.fleet = +m[1]; return; }
+    if (RE_SHIP_CALL.test(line)) { this.say(ts, 'ship', 'Ship requested to the hangar'); return; }
+    if ((m = RE_SHIP_LEAVE.exec(line))) { this.say(ts, 'ship', `Left the ${prettyShip(m[1])}`); return; }
+    if ((m = RE_QT_SHIP.exec(line))) this.setShip(ts, m[1]); // and keep going: the same line has the quantum info
+    if ((m = RE_ATTACH.exec(line))) return this.attachment(ts, m[1], m[2], m[3]);
     if ((m = RE_LOCINV.exec(line))) return this.landedAt(ts, m[1]);
     if ((m = RE_QT_SELECT.exec(line))) return this.qtTarget(ts, m[1]);
     if ((m = RE_QT_START.exec(line))) {
@@ -132,6 +228,7 @@ export class Tracker extends EventEmitter {
     }
     if (RE_QT_ARRIVED.test(line)) {
       if (this.qt) {
+        this.emit('trip', { at: ts, from: this.qt.from, to: this.qt.to, toLabel: this.qt.toLabel, target: this.qt.target, since: this.qt.since, fuel: this.qt.fuel ?? null, ship: this.ship?.name ?? null });
         const to = this.qt.to;
         this.say(ts, 'quantum', 'Arrived' + (to ? ' at ' + this.places.nameOf(to) : this.qt.toLabel ? ' at ' + this.qt.toLabel : ''));
         if (to && ['planet', 'moon'].includes(this.places.kindOf(to))) this.setBody(to);
@@ -163,7 +260,7 @@ export class Tracker extends EventEmitter {
         const id = this.landingPorts.get(landingTo) || this.freshHint(ts);
         if (id) { this.landingPorts.set(landingTo, id); this.setPort(id); }
       } else {
-        if (this.landing && this.port) this.say(ts, 'place', 'Left ' + (this.places.nameOf(this.port) || 'the landing area'));
+        if (this.landing && this.port) { this.say(ts, 'place', 'Left ' + (this.places.nameOf(this.port) || 'the landing area')); this.leftSince = ts; }
         this.landing = null;
         if (!this.armistice) this.port = null;
       }
@@ -280,6 +377,8 @@ export class Tracker extends EventEmitter {
       return this.placeCheck(ts);
     }
     const low = t.toLowerCase();
+    if (/^(entered|entering) monitored space/.test(low)) { this.monitored = true; this.say(ts, 'zone', 'Entered monitored space'); return; }
+    if (/^(left|leaving|exited) monitored space/.test(low)) { this.monitored = false; this.say(ts, 'zone', 'Left monitored space'); return; }
     if (low.startsWith('entering armistice zone')) {
       this.armistice = true;
       this.say(ts, 'zone', 'Entered armistice zone');
@@ -291,6 +390,13 @@ export class Tracker extends EventEmitter {
       this.say(ts, 'zone', 'Left armistice zone');
       if (!this.landing) this.port = null;
       this.placeCheck(ts);
+    } else if (!NOTICE_SKIP.test(t)) {
+      // Anything else the HUD shows (hangar ready, bleeding, medical bed...): keep the headline.
+      // "Bleeding: You are bleeding…" → "Bleeding"; but keep the reason when it matters
+      // ("Quantum Travel: Your destination is obstructed…").
+      const [h, ...more] = t.replace(/:\s*$/, '').split(/:\s/);
+      const head = (/^quantum travel$/i.test(h.trim()) && more.length ? `${h.trim()}: ${more.join(': ').split('.')[0]}` : h.trim()).slice(0, 80);
+      if (head && !(this.event && this.event.text === head && ts - this.event.at < 30)) this.say(ts, /bleed|medical|injur|emergency|health/i.test(t) ? 'health' : 'notice', head);
     }
   }
 
@@ -301,7 +407,12 @@ export class Tracker extends EventEmitter {
       this.setPort(id);
     }
     this.qt = null;
-    this.say(ts, 'place', 'Landed at ' + (id ? this.places.nameOf(id) : plain(name)));
+    // The game asks for the same location's inventory again and again while you use
+    // kiosks or the hangar; only a new landing area is news.
+    const label = id ? this.places.nameOf(id) : plain(name);
+    if (this.lastLanded !== label || ts - this.lastLandedAt > 1800 || this.leftSince > this.lastLandedAt) this.say(ts, 'place', 'Landed at ' + label);
+    this.lastLanded = label;
+    this.lastLandedAt = ts;
     this.placeCheck(ts);
   }
 
@@ -311,6 +422,22 @@ export class Tracker extends EventEmitter {
     const toLabel = to ? null : target.startsWith('PartyMemberMarker') ? 'a party member' : target.startsWith('MISSION_') ? 'a mission marker' : null;
     this.qt = { from: this.port || this.body || this.jurArea, to, toLabel, target, state: 'plotted', since: ts };
     this.changed();
+  }
+
+  /** Items put on the character when it spawns, one burst per spawn. */
+  attachment(ts, who, cls, port) {
+    if (this.handle && who.toLowerCase() !== this.handle.toLowerCase()) return;
+    if (NOT_GEAR.test(cls)) return;
+    if (!this.loadout || ts - this.lastAttach > 5) this.loadout = { at: ts, items: [] };
+    this.lastAttach = ts;
+    this.loadout.items.push({ port, item: cls, name: prettyItem(cls) });
+    this.changed();
+  }
+
+  setShip(ts, cls) {
+    if (this.ship?.cls === cls) return;
+    this.ship = { cls, name: prettyShip(cls), since: ts };
+    this.say(ts, 'ship', `Flying the ${this.ship.name}`);
   }
 
   freshHint(ts) {
@@ -367,6 +494,12 @@ export class Tracker extends EventEmitter {
       transit: qt ? { from: qt.from, fromName: this.places.nameOf(qt.from), to: qt.to, toName: this.places.nameOf(qt.to) || qt.toLabel, state: qt.state, since: qt.since } : null,
       plotted: this.qt && this.qt.state === 'plotted' ? { to: this.qt.to, toName: this.places.nameOf(this.qt.to) || this.qt.toLabel } : null,
       event: this.event,
+      loadout: this.loadout,
+      ship: this.ship,
+      fleet: this.fleet,
+      monitored: this.monitored,
+      freight: this.freight,
+      plottedFuel: this.qt?.fuel ?? null,
     };
   }
 }

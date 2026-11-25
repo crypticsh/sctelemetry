@@ -20,6 +20,22 @@ export const DEFAULT_SETTINGS = {
     importBackups: true, // also read the finished logs in <channel>/logbackups
     placesPath: '', // empty = data/places.json if present, else the built-in list
   },
+  // What to keep and for how long, per kind of data (days; 0 = forever).
+  // Flight samples and flight events use logging.enabled/retentionDays and logging.logEvents.
+  retention: {
+    flightEventsDays: 30,
+    locationEvents: true, // "Landed at …", quantum, jurisdiction lines from Game.log
+    locationEventsDays: 90,
+    visits: true, // time spent at each place
+    visitsDays: 365,
+    sessions: true, // game runs and shard sessions (play time)
+    sessionsDays: 0,
+    ordersDays: 60, // finished or cancelled orders; open orders are never deleted
+    trades: true, // shop purchases and sales
+    tradesDays: 0,
+    trips: true, // quantum trips (from, to, fuel)
+    tripsDays: 365,
+  },
   broadcast: {
     hz: 20, // max updates per second sent to each screen
     rawHz: 4, // max raw-frame updates per second (only to screens that ask)
@@ -55,6 +71,13 @@ const LIMITS = {
   'logging.retentionDays': [0, 3650],
   'logging.maxDbMB': [0, 100000],
   'logging.pruneEveryMin': [1, 1440],
+  'retention.flightEventsDays': [0, 3650],
+  'retention.locationEventsDays': [0, 3650],
+  'retention.visitsDays': [0, 3650],
+  'retention.sessionsDays': [0, 3650],
+  'retention.ordersDays': [0, 3650],
+  'retention.tradesDays': [0, 3650],
+  'retention.tripsDays': [0, 3650],
   'server.port': [1, 65535],
 };
 

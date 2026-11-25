@@ -17,6 +17,7 @@ import { Places } from './gamelog/places.js';
 import { Sessions } from './gamelog/sessions.js';
 import { GameLogFollower } from './gamelog/follower.js';
 import { stateOf, Steady, describe } from './gamelog/situation.js';
+import { Orders } from './orders.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = Object.fromEntries(process.argv.slice(2).map((a) => a.replace(/^--/, '').split('=')));
@@ -40,7 +41,21 @@ if (!fs.existsSync(S().telemetry.exePath)) {
 
 const recorder = new Recorder(path.join(DATA, 'telemetry.db'), S);
 recorder.prune();
-const sessions = new Sessions(recorder.db);
+const sessions = new Sessions(recorder.db, S);
+const orders = new Orders(recorder.db, S);
+sessions.hooks = {
+  onOrder(o, runKey, source) {
+    // Orders found in old logs (logbackups) more than a week back are filed as finished.
+    const old = source === 'backup' && Date.now() / 1000 - o.at > 7 * 86400;
+    if (orders.addFromLog(o, runKey, places?.nameOf(o.place), old)) ordersChanged();
+  },
+};
+recorder.onPrune = () => { sessions.prune(); orders.prune(); };
+recorder.prune();
+
+function ordersChanged() {
+  for (const c of clients) send(c.ws, { type: 'orders' });
+}
 
 // ---------------------------------------------------------------- source
 let source = null;
@@ -254,7 +269,7 @@ async function api(req, res, url) {
   if (p === '/api/sessions') {
     const to = time(q.get('to'), Date.now()) / 1000;
     const from = time(q.get('from'), Date.now() - 30 * 86400000) / 1000;
-    return json(res, 200, { totals: sessions.totals(), runs: sessions.history(from, to), places: sessions.topPlaces(from, to), events: sessions.events(from, to, 200), location: location() });
+    return json(res, 200, { totals: sessions.totals(), runs: sessions.history(from, to), places: sessions.topPlaces(from, to), events: sessions.events(from, to, 200), trades: sessions.trades(from, to), trips: sessions.trips(from, to), location: location() });
   }
   if (p === '/api/sessions/import' && req.method === 'POST') {
     if (!follower) return json(res, 400, { error: 'Game.log reading is off or no game folder is set.' });
@@ -263,6 +278,49 @@ async function api(req, res, url) {
   if (p === '/api/sessions/clear' && req.method === 'POST') {
     sessions.clear();
     follower?.stop(); follower = null; startGameLog();
+    return json(res, 200, { ok: true });
+  }
+  if (p === '/api/orders' && req.method === 'GET') {
+    const since = Date.now() / 1000 - 7 * 86400;
+    return json(res, 200, { orders: orders.list(), elevator: sessions.events(since, Date.now() / 1000, 400).filter((e) => e.kind === 'cargo').slice(0, 12) });
+  }
+  if (p === '/api/orders' && req.method === 'POST') {
+    const o = await body(req);
+    if (!o.location && location().placeName) { o.location = location().placeName; o.place_id = location().place; }
+    try { const id = orders.add(o); ordersChanged(); return json(res, 200, { id }); } catch (e) { return json(res, 400, { error: e.message }); }
+  }
+  {
+    const m = /^\/api\/orders\/(\d+)$/.exec(p);
+    if (m && req.method === 'PATCH') {
+      try { orders.update(+m[1], await body(req)); ordersChanged(); return json(res, 200, { ok: true }); } catch (e) { return json(res, 400, { error: e.message }); }
+    }
+    if (m && req.method === 'DELETE') { orders.remove(+m[1]); ordersChanged(); return json(res, 200, { ok: true }); }
+  }
+  if (p === '/api/data' && req.method === 'GET') {
+    const st = recorder.stats();
+    const c = sessions.counts();
+    const ev = recorder.db.prepare('SELECT COUNT(*) n, MIN(t) first FROM events').get();
+    return json(res, 200, {
+      sizeBytes: st.sizeBytes,
+      kinds: {
+        samples: { n: st.samples, first: st.first },
+        flightEvents: { n: ev.n, first: ev.first },
+        locationEvents: { n: c.locationEvents.n, first: c.locationEvents.first && c.locationEvents.first * 1000 },
+        visits: { n: c.visits.n, first: c.visits.first && c.visits.first * 1000 },
+        sessions: { n: c.sessions.n, first: c.sessions.first && c.sessions.first * 1000 },
+        orders: { n: orders.count().n, first: orders.count().first && orders.count().first * 1000 },
+        trades: { n: c.trades.n, first: c.trades.first && c.trades.first * 1000 },
+        trips: { n: c.trips.n, first: c.trips.first && c.trips.first * 1000 },
+      },
+    });
+  }
+  if (p === '/api/data/purge' && req.method === 'POST') {
+    const { kind } = await body(req);
+    if (kind === 'samples') recorder.db.exec('DELETE FROM samples');
+    else if (kind === 'flightEvents') recorder.db.exec('DELETE FROM events');
+    else if (['locationEvents', 'visits', 'sessions', 'trades', 'trips'].includes(kind)) sessions.purge(kind);
+    else if (kind === 'orders') { orders.purgeClosed(); ordersChanged(); }
+    else return json(res, 400, { error: 'unknown kind' });
     return json(res, 200, { ok: true });
   }
   if (p === '/api/setup' && req.method === 'GET') return json(res, 200, setupStatus(S()));
