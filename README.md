@@ -46,7 +46,7 @@ The game only listens on `127.0.0.1`, so the server has to run **on the gaming P
    The console prints addresses such as `http://192.168.1.20:8420`. Open that address on your tablet or phone. When Windows asks, allow Node through the firewall on **private** networks.
 4. If the game is not installed in the default location, set the path to `StarCitizen.exe` in **Settings → Telemetry source**. The server reads the API definitions from the exe and caches them, so it keeps working after patches.
 
-**No game running?** Double-click `Start Simulator.cmd`, run `npm run sim`, to use built-in demo data, or pick *Simulator* in Settings.
+**No game running?** Double-click `Start Simulator.cmd` (or run `npm run sim`) to use built-in demo data, or pick *Simulator* in Settings.
 
 **Tips for tablets:** use *Add to Home Screen* to run it full screen. Screen wake-lock only works over HTTPS or on localhost; on plain HTTP, set the tablet's auto-lock to "never" while flying.
 
